@@ -68,8 +68,11 @@ public sealed class RuleSetEditorModel
 
     public string Description { get; set; } = string.Empty;
 
-    /// <summary>New rule sets start as dry runs.</summary>
-    public RuleSetMode Mode { get; set; } = RuleSetMode.DryRun;
+    /// <summary>
+    /// New rule sets are live, as in <see cref="RuleSetDocument.Mode"/>: a rule is tried by letting it archive with its
+    /// review label (new decisions default to Archive), not by watching a dry run. Saving never activates a rule set.
+    /// </summary>
+    public RuleSetMode Mode { get; set; } = RuleSetMode.Live;
 
     public string Model { get; set; } = JevRequest.DefaultModel;
 

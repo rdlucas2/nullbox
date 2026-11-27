@@ -21,6 +21,17 @@ public sealed class RuleSetEditorModelTests
     }
 
     [Fact]
+    public void New_rule_sets_are_live_and_new_decisions_archive()
+    {
+        var model = new RuleSetEditorModel();
+
+        var decision = model.AddDecision();
+
+        Assert.Equal(RuleSetMode.Live, model.Mode);
+        Assert.Equal(RemoveMode.Archive, decision.Remove);
+    }
+
+    [Fact]
     public void New_questions_get_unique_names_and_starter_options()
     {
         var model = new RuleSetEditorModel();

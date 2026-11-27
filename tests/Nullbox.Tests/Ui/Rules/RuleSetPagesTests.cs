@@ -66,7 +66,7 @@ public sealed class RuleSetPagesTests : IAsyncLifetime
               "$schema": "/schemas/ruleset.schema.json",
               "name": "newsletters",
               "description": "Archives newsletters.",
-              "mode": "dry_run",
+              "mode": "live",
               "model": "jev-latest",
               "state": { "fields": ["from", "subject"], "body_max_chars": 2000 },
               "questions": {
