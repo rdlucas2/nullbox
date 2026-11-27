@@ -45,6 +45,9 @@ public sealed class UiShellTests(NullboxAppFactory factory)
 
     [Theory]
     [InlineData("/rules", "Rule sets")]
+    [InlineData("/rules", "promo-cleanup")]
+    [InlineData("/rules/new", "New rule set")]
+    [InlineData("/rules/important-mail-guard", "Save as v2")]
     [InlineData("/test", "Test")]
     [InlineData("/audit", "Audit")]
     [InlineData("/jobs", "Open the Hangfire dashboard")]
@@ -70,6 +73,27 @@ public sealed class UiShellTests(NullboxAppFactory factory)
 
         Assert.Contains("action=\"/logout\"", page);
         Assert.Contains("__RequestVerificationToken", page);
+    }
+
+    [Fact]
+    public async Task Rule_sets_export_as_a_json_file_for_the_admin_only()
+    {
+        using var client = factory.CreateNonRedirectingClient();
+        using (var anonymous = await client.GetAsync("/api/rule-sets/promo-cleanup/export"))
+        {
+            Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
+        }
+
+        using var login = await LoginHelper.LoginAsync(client, NullboxAppFactory.AdminPassword);
+        using var export = await client.GetAsync("/api/rule-sets/promo-cleanup/export?version=1");
+        using var missing = await client.GetAsync("/api/rule-sets/no-such-set/export");
+
+        Assert.Equal(HttpStatusCode.OK, export.StatusCode);
+        Assert.Equal("application/json", export.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("promo-cleanup-v1.json", export.Content.Headers.ContentDisposition?.FileNameStar ?? export.Content.Headers.ContentDisposition?.FileName);
+        var document = Nullbox.Core.Rules.RuleJson.ParseOrThrow(await export.Content.ReadAsStringAsync());
+        Assert.Equal(Nullbox.Core.Rules.RuleSetSeeds.PromoCleanup, document.Name);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
     [Theory]

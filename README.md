@@ -41,8 +41,9 @@ light/dark toggle (follows the system setting until you switch it) and a sign-ou
 
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
-token budget. Rule sets, Test, Audit and Jobs are placeholders that later milestones fill in; Jobs links to the
-Hangfire dashboard meanwhile.
+token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports rule sets
+([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test, Audit and Jobs are placeholders that later milestones fill
+in; Jobs links to the Hangfire dashboard meanwhile.
 
 ## Configuration
 
@@ -95,8 +96,8 @@ Each new message goes through every active rule set ([docs/rules.md](docs/rules.
 (the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
 in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 
-- the rule set's `mode` is `live` (the default for new rule sets; the example rule sets are `dry_run`, which only
-  records what would happen);
+- the rule set's `mode` is `live` (the default in rule-set JSON; the example rule sets, and new rule sets made in the
+  editor, are `dry_run`, which only records what would happen);
 - the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
 

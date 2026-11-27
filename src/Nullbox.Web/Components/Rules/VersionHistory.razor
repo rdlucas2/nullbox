@@ -1,0 +1,72 @@
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Ui.Rules
+
+@if (Versions.Count == 0)
+{
+    <MudText Typo="Typo.body2" data-testid="no-versions">Not saved yet. Saving creates version 1.</MudText>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudList T="int" Dense="true">
+                @foreach (var version in Versions)
+                {
+                    <MudListItem T="int" OnClick="@(() => _selected = version.Version)" data-testid="@($"version-{version.Version}")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudText Typo="Typo.body2" Style="@(version.Version == Selected?.Version ? "font-weight: 600" : null)">v@(version.Version)</MudText>
+                            <MudText Typo="Typo.caption">@version.CreatedUtc.ToString("yyyy-MM-dd HH:mm") UTC</MudText>
+                            @if (version.IsActive)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success">active</MudChip>
+                            }
+                            <MudChip T="string" Size="Size.Small">@(version.Document.Mode == RuleSetMode.Live ? "live" : "dry run")</MudChip>
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            @if (Selected is { } selected)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.subtitle1">
+                        v@(selected.Version) @(Previous(selected) is { } p ? $"compared with v{p.Version}" : "(first version)")
+                    </MudText>
+                    <MudSpacer />
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Restore" OnClick="@(() => OnRestore.InvokeAsync(selected))" data-testid="restore">
+                        Load into editor
+                    </MudButton>
+                </MudStack>
+                <pre class="mud-typography-body2 pa-2" style="overflow-x: auto; white-space: pre;" data-testid="version-diff">@foreach (var line in Diff(selected))
+{<span style="@Style(line.Kind)">@(line.Kind switch { DiffKind.Added => "+ ", DiffKind.Removed => "- ", _ => "  " })@line.Text
+</span>}</pre>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    /// <summary>Newest first.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<RuleSetVersion> Versions { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<RuleSetVersion> OnRestore { get; set; }
+
+    private int? _selected;
+
+    private RuleSetVersion? Selected => Versions.FirstOrDefault(v => v.Version == _selected) ?? Versions.FirstOrDefault();
+
+    private RuleSetVersion? Previous(RuleSetVersion version) => Versions.Where(v => v.Version < version.Version).MaxBy(v => v.Version);
+
+    private IReadOnlyList<DiffLine> Diff(RuleSetVersion version)
+        => LineDiff.Compute(Previous(version)?.Json ?? string.Empty, version.Json);
+
+    private static string? Style(DiffKind kind) => kind switch
+    {
+        DiffKind.Added => "background: rgba(46, 160, 67, 0.2)",
+        DiffKind.Removed => "background: rgba(248, 81, 73, 0.2)",
+        _ => null,
+    };
+}

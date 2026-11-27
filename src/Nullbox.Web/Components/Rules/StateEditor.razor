@@ -1,0 +1,67 @@
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Ui.Rules
+@inject TimeProvider Time
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Email fields sent to Jev</MudText>
+        @foreach (var field in StateFields.All)
+        {
+            <div data-testid="@($"field-{field}")">
+                <MudCheckBox T="bool" Value="@Model.Fields.Contains(field)" ValueChanged="@(on => ToggleAsync(field, on))" Label="@Describe(field)" Dense="true" />
+            </div>
+        }
+        <MudNumericField T="int" Label="Body length cap (characters)" Value="@Model.BodyMaxChars" ValueChanged="@SetBodyAsync"
+                         Min="1" Max="100000" Disabled="@(!Model.Fields.Contains(StateFields.Body))" Class="mt-3" data-testid="body-max-chars"
+                         HelperText="Longer bodies are cut before they are sent." />
+    </MudItem>
+    <MudItem xs="12" md="7">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">State Jev sees for a sample email</MudText>
+        <pre class="mud-typography-body2 pa-3 mud-background-gray" style="white-space: pre-wrap; overflow-x: auto;" data-testid="state-preview">@Model.StatePreview(Time.GetUtcNow())</pre>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired]
+    public RuleSetEditorModel Model { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private static string Describe(string field) => field switch
+    {
+        StateFields.From => "from: sender",
+        StateFields.Subject => "subject",
+        StateFields.Snippet => "snippet: Gmail's short preview",
+        StateFields.Body => "body: plain-text body (cut to the cap)",
+        StateFields.Labels => "labels: Gmail label ids",
+        StateFields.AgeDays => "age_days: days since it arrived",
+        StateFields.HasUnsubscribe => "has_unsubscribe: has a List-Unsubscribe header",
+        StateFields.Date => "date: the Date header",
+        _ => field,
+    };
+
+    private async Task ToggleAsync(string field, bool on)
+    {
+        if (on && !Model.Fields.Contains(field))
+        {
+            // Keep the canonical order so the JSON doesn't jump around.
+            Model.Fields.Add(field);
+            var ordered = StateFields.All.Where(Model.Fields.Contains).Concat(Model.Fields.Where(f => !StateFields.All.Contains(f))).ToList();
+            Model.Fields.Clear();
+            Model.Fields.AddRange(ordered);
+        }
+        else if (!on)
+        {
+            Model.Fields.Remove(field);
+        }
+
+        await Changed.InvokeAsync();
+    }
+
+    private async Task SetBodyAsync(int value)
+    {
+        Model.BodyMaxChars = value;
+        await Changed.InvokeAsync();
+    }
+}

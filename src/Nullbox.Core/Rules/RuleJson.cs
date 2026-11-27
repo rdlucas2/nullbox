@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Nullbox.Core.Jev;
 
@@ -66,6 +67,13 @@ public static class RuleJson
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
         };
+        if (indented)
+        {
+            // People read and edit this form, so keep conditions as written ("a >= 0.5", not "a \u003E= 0.5").
+            // The compact form that is hashed keeps the default escaping, so existing hashes don't change.
+            options.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+        }
+
         options.MakeReadOnly(populateMissingResolver: true);
         return options;
     }
