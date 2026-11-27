@@ -111,7 +111,9 @@ public sealed record GmailMessage(
     IReadOnlyList<string> LabelIds,
     string? Snippet,
     DateTimeOffset? InternalDate,
-    string? Body)
+    string? Body,
+    string? To = null,
+    string? Cc = null)
 {
     public bool HasUnsubscribe => !string.IsNullOrWhiteSpace(ListUnsubscribe);
 }

@@ -18,7 +18,7 @@ public sealed partial class GmailApiService : IGmailService
     private const string Me = "me";
     private const int ListPageSize = 500;
 
-    private static readonly string[] MetadataHeaders = ["From", "Subject", "Date", "List-Unsubscribe"];
+    private static readonly string[] MetadataHeaders = ["From", "To", "Cc", "Subject", "Date", "List-Unsubscribe"];
 
     private readonly GmailService _gmail;
     private readonly GmailOptions _options;
@@ -278,7 +278,9 @@ public sealed partial class GmailApiService : IGmailService
             message.LabelIds?.ToList() ?? [],
             message.Snippet,
             internalDate,
-            body);
+            body,
+            Header("To"),
+            Header("Cc"));
     }
 
     /// <summary>Prefers the first text/plain part; falls back to text/html with tags stripped.</summary>

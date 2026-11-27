@@ -1,5 +1,6 @@
 using MudBlazor.Services;
 using Nullbox.Core.Rules;
+using Nullbox.Core.SavedRules;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Components;
 using Nullbox.Web.Ui.Rules;
@@ -22,7 +23,7 @@ public static class UiHosting
     /// <summary>
     /// Every UI page sits behind the admin login; static assets (CSS, JS) do not. Also maps
     /// <c>GET /api/rule-sets/{name}/export?version=</c>, which downloads a version's JSON (the active one by default,
-    /// else the latest).
+    /// else the latest), and <c>GET /api/saved-rules/export</c>, which downloads every saved rule.
     /// </summary>
     public static IEndpointRouteBuilder MapNullboxUi(this IEndpointRouteBuilder endpoints)
     {
@@ -34,6 +35,10 @@ public static class UiHosting
                 ? Results.NotFound()
                 : Results.File(System.Text.Encoding.UTF8.GetBytes(found.Json), "application/json", $"{found.Name}-v{found.Version}.json");
         }).RequireAuthorization(AdminAuth.PolicyName);
+
+        endpoints.MapGet("/api/saved-rules/export", async (ISavedRuleStore store, CancellationToken ct) =>
+            Results.File(System.Text.Encoding.UTF8.GetBytes(await store.ExportAsync(ct)), "application/json", "saved-rules.json"))
+            .RequireAuthorization(AdminAuth.PolicyName);
 
         endpoints.MapStaticAssets();
         endpoints.MapRazorComponents<App>()

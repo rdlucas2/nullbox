@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rdlucas2/nullbox/schemas/savedrules.schema.json",
+  "title": "nullbox saved rules",
+  "description": "Fixed sender and recipient rules that act without asking Jev. They run in order, before the Jev rule sets.",
+  "type": "object",
+  "required": [
+    "rules"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "rules": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "address": {
+      "description": "An address (deals@shop.example) or a whole domain with its subdomains (@shop.example). me@x.example also matches me+anything@x.example. Case is ignored.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 254
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "from"
+          ]
+        },
+        {
+          "required": [
+            "to"
+          ]
+        }
+      ],
+      "properties": {
+        "name": {
+          "description": "Identity of the rule; its audit key is saved:<name>.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "mode": {
+          "description": "dry_run (the default) only records matches; live applies them.",
+          "enum": [
+            "dry_run",
+            "live"
+          ],
+          "default": "dry_run"
+        },
+        "from": {
+          "$ref": "#/$defs/address"
+        },
+        "to": {
+          "description": "A recipient in To or Cc.",
+          "$ref": "#/$defs/address"
+        },
+        "subject_contains": {
+          "description": "Text the subject must contain (case is ignored).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "actions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(label:.+|mark_read|star)$"
+          }
+        },
+        "remove": {
+          "description": "archive takes matching mail out of the inbox with the review label nullbox/review/saved-rules/<name>; delete moves it to Trash (archives instead while the delete lock is on).",
+          "enum": [
+            "archive",
+            "delete",
+            null
+          ]
+        },
+        "stop": {
+          "description": "When the rule is live and matches, skip the later saved rules and the Jev rule sets.",
+          "type": "boolean",
+          "default": true
+        },
+        "allow_protected": {
+          "description": "Allow mark_read and remove on starred or important mail.",
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}

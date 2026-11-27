@@ -21,6 +21,8 @@ public sealed class NullboxDbContext(DbContextOptions<NullboxDbContext> options)
 
     public DbSet<CleanupRunRow> CleanupRuns => Set<CleanupRunRow>();
 
+    public DbSet<SavedRuleRow> SavedRules => Set<SavedRuleRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RuleSetRow>(e =>
@@ -88,7 +90,34 @@ public sealed class NullboxDbContext(DbContextOptions<NullboxDbContext> options)
             e.Property(r => r.Error).HasMaxLength(2000);
             e.HasIndex(r => r.CreatedUtc);
         });
+
+        modelBuilder.Entity<SavedRuleRow>(e =>
+        {
+            e.ToTable("saved_rules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Name).HasMaxLength(64).IsRequired();
+            e.HasIndex(r => r.Name).IsUnique();
+            e.Property(r => r.Json).IsRequired();
+            e.HasIndex(r => r.Position);
+        });
     }
+}
+
+/// <summary>One saved rule (see <see cref="Nullbox.Core.SavedRules.SavedRule"/>) as validated JSON.</summary>
+public sealed class SavedRuleRow
+{
+    public int Id { get; set; }
+
+    public required string Name { get; set; }
+
+    /// <summary>Where it runs, lowest first.</summary>
+    public int Position { get; set; }
+
+    public required string Json { get; set; }
+
+    public DateTime CreatedUtc { get; set; }
+
+    public DateTime UpdatedUtc { get; set; }
 }
 
 /// <summary>One rule-set version's verdict on one message (see <see cref="Nullbox.Core.Pipeline.DecisionRecord"/>).</summary>

@@ -48,6 +48,21 @@ public sealed class EfDecisionLog(NullboxDbContext db) : IDecisionLog, IPipeline
             d => d.MessageId == messageId && d.RuleSetKey == ruleSetKey && d.Outcome != DecisionOutcome.Error,
             cancellationToken);
 
+    public async Task<IReadOnlyDictionary<string, int>> CountByKeyAsync(IReadOnlyCollection<string> ruleSetKeys, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ruleSetKeys);
+        if (ruleSetKeys.Count == 0)
+        {
+            return new Dictionary<string, int>();
+        }
+
+        return await db.Decisions.AsNoTracking()
+            .Where(d => ruleSetKeys.Contains(d.RuleSetKey) && d.Outcome != DecisionOutcome.Error)
+            .GroupBy(d => d.RuleSetKey)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.Key, g => g.Count, StringComparer.Ordinal, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<DecisionRecord>> ListAsync(string? messageId = null, int limit = 50, CancellationToken cancellationToken = default)
         => (await QueryAsync(new DecisionQuery { MessageId = messageId, Limit = limit }, cancellationToken)).Items;
 

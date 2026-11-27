@@ -126,6 +126,9 @@ public interface IDecisionLog
     /// <summary>Deletes records older than <paramref name="before"/> and returns how many went.</summary>
     Task<int> PurgeAsync(DateTimeOffset before, CancellationToken cancellationToken = default);
 
+    /// <summary>How many verdicts (not counting <see cref="DecisionOutcome.Error"/> records) each of <paramref name="ruleSetKeys"/> has; keys without any are left out.</summary>
+    Task<IReadOnlyDictionary<string, int>> CountByKeyAsync(IReadOnlyCollection<string> ruleSetKeys, CancellationToken cancellationToken = default);
+
     /// <summary>Messages changed by <see cref="DecisionOutcome.Applied"/> records at or after <paramref name="since"/>.</summary>
     Task<int> CountAppliedSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default);
 

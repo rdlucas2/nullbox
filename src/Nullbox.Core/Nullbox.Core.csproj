@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Rules\ruleset.schema.json" LogicalName="Nullbox.Core.Rules.ruleset.schema.json" />
+    <EmbeddedResource Include="SavedRules\savedrules.schema.json" LogicalName="Nullbox.Core.SavedRules.savedrules.schema.json" />
     <EmbeddedResource Include="Rules\Seeds\*.json" LogicalName="Nullbox.Core.Rules.Seeds.%(Filename)%(Extension)" />
   </ItemGroup>
 

@@ -262,6 +262,40 @@ namespace Nullbox.Data.Migrations
                     b.ToTable("rule_set_versions", (string)null);
                 });
 
+            modelBuilder.Entity("Nullbox.Data.SavedRuleRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("Position");
+
+                    b.ToTable("saved_rules", (string)null);
+                });
+
             modelBuilder.Entity("Nullbox.Data.RuleSetVersionRow", b =>
                 {
                     b.HasOne("Nullbox.Data.RuleSetRow", null)

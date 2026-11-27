@@ -146,3 +146,54 @@ answers are cached like the pipeline's, so running the same draft again over the
 With **Compare with the active version** ticked, each message also shows what the active version decides, and rows
 where the actions differ are highlighted. The active version's verdict is taken from the decision log when it has
 already decided that message; otherwise Jev is asked for it too, which the cost check counts.
+
+## Saved rules
+
+Some mail needs no judgement: a sender you always want gone, or mail to one address that always gets a label. Asking
+Jev about it costs tokens and time and can come out wrong, so keep those as **saved rules** at `/saved-rules`.
+
+```json
+{
+  "$schema": "/schemas/savedrules.schema.json",
+  "rules": [
+    { "name": "shop-deals", "mode": "live", "from": "@shop.example", "actions": ["label:shop"], "remove": "archive" },
+    { "name": "newsletters", "to": "me+news@gmail.com", "subject_contains": "weekly", "actions": ["mark_read"], "stop": false }
+  ]
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `name` | Identity: lowercase letters, digits, `-`, `_` (up to 64). Its audit key is `saved:<name>`. |
+| `enabled` | `false` keeps the rule but never runs it. Default `true`. |
+| `mode` | `dry_run` (the default, so new rules start here) records matches; `live` applies them. |
+| `from` | The sender: an address (`deals@shop.example`) or a whole domain with its subdomains (`@shop.example`). |
+| `to` | A recipient in To or Cc, written the same way. `me@gmail.com` also matches `me+anything@gmail.com`; `me+news@gmail.com` matches only itself. |
+| `subject_contains` | Optional text the subject must contain. |
+| `actions` | `label:<name>`, `mark_read`, `star`. |
+| `remove` | `archive` (with the review label `nullbox/review/saved-rules/<name>`) or `delete` (Trash). |
+| `stop` | When the rule is live and matches, skip the later saved rules and the Jev rule sets. Default `true`. |
+| `allow_protected` | Allow `mark_read` and `remove` on starred or important mail. |
+
+A rule needs `from`, `to` or both, and at least one action or `remove`. Every part it has must match, ignoring case.
+Matching is on addresses only: no wildcards, regex or Gmail search syntax.
+
+Saved rules run for each new inbox message before the rule sets, in the order listed. Each match is applied through
+the same plan as a rule-set decision, so the delete lock, protected mail, the kill switch and the hourly cap all
+apply, and each is a decision record with no Jev answers and confidence 1 (filter the Audit page by `saved:<name>`).
+A dry-run rule never stops anything: the rule sets still run, so you can compare the two before going live.
+
+The page lists each rule with its match, action, mode, on/off switch and hit count (the number of decision records,
+linked to them on the Audit page). The editor has a form and a JSON view; switching a rule to Delete, in either,
+asks first. Up and down arrows set the order. Export downloads every rule (`/api/saved-rules/export`); import
+replaces rules with the same name in place and adds the others last, and stores nothing if any rule is invalid.
+The test box shows which rules a sample From, To and Subject would match, in order, and where a stop cuts them off.
+
+### Which tool to use
+
+| Use | When |
+|---|---|
+| A saved rule | The sender or recipient alone settles it (always block this sender, always label mail to this address), with each match in the audit log. |
+| A Jev rule set | Deciding needs judgement about what the mail says (promo or personal, worth reading or not). |
+| A cleanup file | A one-off or scheduled sweep of mail that is already in the mailbox, by Gmail search ([cleanup](../README.md#cleanup-rules)). |
+| A Gmail filter | Gmail should act the moment mail arrives, even when nullbox is down, and search syntax is enough ([filters](../README.md#filters-and-bulk-jobs)). |
