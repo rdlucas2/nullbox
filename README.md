@@ -50,8 +50,9 @@ The ops pages ask before anything that changes Gmail or deletes data:
 - **Audit (`/audit`):** the decision log with the same filters as `GET /pipeline/decisions`, and a detail panel with
   Jev's answers, the state sent and the actions. A decision applied in live mode can be undone: the message goes back
   in the inbox (out of Trash for a delete), gets UNREAD back and loses the star and labels the decision added. Steps
-  the message's labels at the time show would change nothing are left out. `?messageId=` and `?ruleSet=` start it
-  filtered.
+  the message's labels at the time show would change nothing are left out. Each undo is logged as an `undone` record
+  with the steps taken, so it shows in the log and the same decision can't be undone twice. `?messageId=` and
+  `?ruleSet=` start it filtered.
 - **Cleanup (`/cleanup`):** edit the `{data}/cleanup/*.json` files in a form or as JSON, dry-run one with a top-senders
   sample, and apply it only after a finished dry run of that file. The Gmail filters section dry-runs and applies the
   filter sync.

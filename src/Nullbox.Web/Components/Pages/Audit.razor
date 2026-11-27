@@ -88,7 +88,7 @@
                 <tbody>
                     @foreach (var item in _items)
                     {
-                        <tr @onclick="@(() => Select(item))" style="cursor: pointer; @(item.Id == _selected?.Id ? "background: rgba(25, 118, 210, 0.12)" : null)" data-testid="@($"audit-row-{item.Id}")">
+                        <tr @onclick="@(() => SelectAsync(item))" style="cursor: pointer; @(item.Id == _selected?.Id ? "background: rgba(25, 118, 210, 0.12)" : null)" data-testid="@($"audit-row-{item.Id}")">
                             <td>@item.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
                             <td><code>@item.MessageId</code></td>
                             <td>@item.RuleSetKey</td>
@@ -119,7 +119,7 @@
                 <MudStack Row="true" AlignItems="AlignItems.Center">
                     <MudText Typo="Typo.subtitle1">@record.RuleSetKey on <code>@record.MessageId</code></MudText>
                     <MudSpacer />
-                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => Select(null))" aria-label="Close" data-testid="audit-detail-close" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => SelectAsync(null))" aria-label="Close" data-testid="audit-detail-close" />
                 </MudStack>
                 <MudText Typo="Typo.body2" Class="mb-2">
                     @Name(record.Outcome) in @(record.Mode == RuleSetMode.Live ? "live" : "dry run") mode,
@@ -159,6 +159,12 @@
                 {
                     <MudAlert Severity="Severity.Success" Dense="true" data-testid="undo-done">Undone: @string.Join(", ", done).</MudAlert>
                 }
+                else if (_previousUndo is { } previous)
+                {
+                    <MudText Typo="Typo.caption" data-testid="undo-already">
+                        Already undone on @previous.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) UTC: @string.Join(", ", previous.Actions).
+                    </MudText>
+                }
                 else if (!_undoPlan!.CanUndo)
                 {
                     <MudText Typo="Typo.caption" data-testid="undo-unavailable">@_undoPlan.Unavailable</MudText>
@@ -197,6 +203,7 @@
     private long? _next;
     private DecisionRecord? _selected;
     private UndoPlan? _undoPlan;
+    private DecisionRecord? _previousUndo;
     private bool _confirmUndo;
     private bool _busy;
     private string? _error;
@@ -248,7 +255,7 @@
 
         if (_selected is not null && _items.All(i => i.Id != _selected.Id))
         {
-            Select(null);
+            await SelectAsync(null);
         }
     }
 
@@ -265,11 +272,13 @@
         return SearchAsync();
     }
 
-    private void Select(DecisionRecord? record)
+    private async Task SelectAsync(DecisionRecord? record)
     {
         _selected = record;
         _undoPlan = record is null ? null : DecisionUndo.Plan(record);
         _confirmUndo = false;
+        // An undo is logged as its own record, so it shows even after a reload and can't run twice.
+        _previousUndo = record is not null && _undoPlan is { CanUndo: true } ? await DecisionUndo.FindUndoAsync(Log, record) : null;
     }
 
     private async Task UndoAsync()
@@ -289,7 +298,9 @@
         _busy = true;
         try
         {
-            _undone[record.Id] = await DecisionUndo.ApplyAsync(gmail, record, plan);
+            var steps = await DecisionUndo.ApplyAsync(gmail, record, plan);
+            _undone[record.Id] = steps;
+            await Log.RecordAsync(DecisionUndo.UndoneRecord(record, steps, (Services.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow()));
             Logger.LogInformation("Undid decision {Id} ({RuleSet}) on message {MessageId}", record.Id, record.RuleSetKey, record.MessageId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -310,6 +321,7 @@
         DecisionOutcome.NoChange => "No change",
         DecisionOutcome.KillSwitch => "Kill switch",
         DecisionOutcome.CapReached => "Hourly cap",
+        DecisionOutcome.Undone => "Undone",
         _ => "Error",
     };
 

@@ -94,6 +94,29 @@ public sealed class AuditPageTests : OpsPageTest
     }
 
     [Fact]
+    public async Task An_undo_is_logged_and_after_a_reload_cannot_run_again()
+    {
+        await Db.Log().RecordAsync(Record("m1", RuleSetMode.Live, DecisionOutcome.Applied, "mark_read", "archive"));
+        var id = (await Db.Log().ListAsync("m1")).Single().Id;
+        var first = Ctx.Render<AuditPage>();
+        first.Find($"[data-testid=audit-row-{id}]").Click();
+        first.Find("[data-testid=undo]").Click();
+        first.Find("[data-testid=confirm-undo-yes]").Click();
+        first.WaitForElement("[data-testid=undo-done]");
+
+        var undone = Assert.Single(await Db.Log().ListAsync("m1"), r => r.Outcome == DecisionOutcome.Undone);
+        Assert.Equal(["Mark it unread", "Move it back to the inbox"], undone.Actions);
+
+        var reloaded = Ctx.Render<AuditPage>();
+        reloaded.Find($"[data-testid=audit-row-{id}]").Click();
+
+        reloaded.WaitForElement("[data-testid=undo-already]");
+        Assert.Contains("Move it back to the inbox", reloaded.Find("[data-testid=undo-already]").TextContent, StringComparison.Ordinal);
+        Assert.Empty(reloaded.FindAll("[data-testid=undo]"));
+        Assert.Single(Gmail.Changes);
+    }
+
+    [Fact]
     public async Task Cancelling_the_undo_changes_nothing()
     {
         await Db.Log().RecordAsync(Record("m1", RuleSetMode.Live, DecisionOutcome.Applied, "archive"));

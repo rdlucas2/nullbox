@@ -100,3 +100,42 @@ public sealed class DecisionUndoTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => DecisionUndo.ApplyAsync(new FakeInboxGmail(), record, DecisionUndo.Plan(record)));
     }
 }
+
+/// <summary>An undo is logged as an <see cref="DecisionOutcome.Undone"/> record, which is how a second undo is refused.</summary>
+public sealed class DecisionUndoLogTests : IAsyncLifetime
+{
+    private readonly PipelineDb _db = new();
+
+    public Task InitializeAsync() => _db.InitializeAsync();
+
+    public Task DisposeAsync() => _db.DisposeAsync();
+
+    private static DecisionRecord Applied(string messageId, string key = "promo-cleanup@v2") => new(
+        messageId, key, Nullbox.Core.Rules.RuleSetMode.Live, DecisionOutcome.Applied, ["Archive confident promos"], ["archive"], [], "jev", "{}",
+        new DateTimeOffset(2026, 11, 27, 8, 0, 0, TimeSpan.Zero))
+    {
+        Labels = [Nullbox.Core.Gmail.GmailLabels.Inbox],
+    };
+
+    [Fact]
+    public async Task An_undo_is_found_only_for_the_decision_it_undid()
+    {
+        await _db.Log().RecordAsync(Applied("m1"));
+        await _db.Log().RecordAsync(Applied("m1", "other@v1"));
+        var decision = (await _db.Log().ListAsync("m1")).Single(r => r.RuleSetKey == "promo-cleanup@v2");
+        Assert.Null(await DecisionUndo.FindUndoAsync(_db.Log(), decision));
+
+        await _db.Log().RecordAsync(DecisionUndo.UndoneRecord(decision, ["Move it back to the inbox"], _db.Time.GetUtcNow()));
+
+        var undo = await DecisionUndo.FindUndoAsync(_db.Log(), decision);
+        Assert.NotNull(undo);
+        Assert.Equal((DecisionOutcome.Undone, "promo-cleanup@v2"), (undo.Outcome, undo.RuleSetKey));
+        Assert.Equal(["Move it back to the inbox"], undo.Actions);
+        Assert.Equal(decision.Labels, undo.Labels);
+        Assert.Null(await DecisionUndo.FindUndoAsync(_db.Log(), (await _db.Log().ListAsync("m1")).Single(r => r.RuleSetKey == "other@v1")));
+    }
+
+    [Fact]
+    public void An_undone_record_cannot_itself_be_undone()
+        => Assert.Equal(DecisionUndo.NotAppliedReason, DecisionUndo.Plan(DecisionUndo.UndoneRecord(Applied("m2"), ["Move it back to the inbox"], DateTimeOffset.UnixEpoch)).Unavailable);
+}

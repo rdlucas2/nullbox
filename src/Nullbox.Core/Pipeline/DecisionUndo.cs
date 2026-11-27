@@ -31,6 +31,28 @@ public static class DecisionUndo
 
     public const string NothingToUndoReason = "This decision made no change that can be undone.";
 
+    /// <summary>
+    /// The <see cref="DecisionOutcome.Undone"/> record of an undo of <paramref name="record"/>, if there is one: same
+    /// message and rule-set version, logged after it.
+    /// </summary>
+    public static async Task<DecisionRecord?> FindUndoAsync(IDecisionLog log, DecisionRecord record, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(record);
+        var page = await log.QueryAsync(new DecisionQuery { MessageId = record.MessageId, Outcome = DecisionOutcome.Undone, Limit = 200 }, cancellationToken);
+        return page.Items.FirstOrDefault(r => r.RuleSetKey == record.RuleSetKey && r.Id > record.Id);
+    }
+
+    /// <summary>What to log after undoing <paramref name="record"/>: the steps taken, as an <see cref="DecisionOutcome.Undone"/> record.</summary>
+    public static DecisionRecord UndoneRecord(DecisionRecord record, IReadOnlyList<string> steps, DateTimeOffset at)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        return new DecisionRecord(record.MessageId, record.RuleSetKey, record.Mode, DecisionOutcome.Undone, record.Decisions, steps, [], record.Model, "{}", at)
+        {
+            Labels = record.Labels,
+        };
+    }
+
     public static UndoPlan Plan(DecisionRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
