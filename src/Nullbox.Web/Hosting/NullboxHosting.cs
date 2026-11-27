@@ -3,6 +3,7 @@ using Hangfire;
 using Hangfire.Storage.SQLite;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
+using Nullbox.Core.Gmail;
 using Nullbox.Core.Jobs;
 using Nullbox.Core.Options;
 using Nullbox.Web.Auth;
@@ -140,6 +141,22 @@ public static partial class NullboxHosting
         if (!app.Services.GetRequiredService<AdminPasswordVerifier>().IsConfigured)
         {
             app.Logger.LogWarning("ADMIN_PASSWORD is not set: the dashboard and UI cannot be signed in to.");
+        }
+    }
+
+    /// <summary>Says at startup whether mail can be moved to Trash or deleted (the app-wide delete lock).</summary>
+    public static void LogDeleteLock(this WebApplication app)
+    {
+        var gmail = app.Services.GetService<IOptions<GmailOptions>>()?.Value ?? new GmailOptions();
+        if (gmail.AllowDelete)
+        {
+            app.Logger.LogWarning(
+                "Delete lock is OFF: rules and jobs may move mail to Trash{Permanent}",
+                gmail.AllowPermanentDelete ? " and permanently delete it" : string.Empty);
+        }
+        else
+        {
+            app.Logger.LogInformation("Delete lock is on: nothing will be moved to Trash or deleted (Nullbox:Gmail:AllowDelete=false)");
         }
     }
 

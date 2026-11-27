@@ -218,6 +218,11 @@ public sealed partial class GmailApiService : IGmailService
 
     public async Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
     {
+        if (!_options.AllowDelete)
+        {
+            throw new DeleteLockedException();
+        }
+
         var ids = messageIds.Distinct().ToList();
         // Gmail has no batch trash endpoint; trash is applied per message.
         foreach (var id in ids)
@@ -233,6 +238,11 @@ public sealed partial class GmailApiService : IGmailService
 
     public async Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
     {
+        if (!_options.AllowDelete)
+        {
+            throw new DeleteLockedException();
+        }
+
         if (!_options.AllowPermanentDelete)
         {
             throw new PermanentDeleteDisabledException();

@@ -31,12 +31,15 @@ public interface IGmailService
     /// <summary>Removes INBOX and, when <paramref name="label"/> is given, applies that label (created if needed).</summary>
     Task ArchiveAsync(IEnumerable<string> messageIds, string? label, CancellationToken cancellationToken = default);
 
-    /// <summary>Moves messages to Trash (recoverable for 30 days).</summary>
+    /// <summary>
+    /// Moves messages to Trash (recoverable for 30 days). Throws <see cref="DeleteLockedException"/> while the
+    /// app-wide delete lock is on (<see cref="GmailOptions.AllowDelete"/> off, the default).
+    /// </summary>
     Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Permanently deletes messages. Throws <see cref="PermanentDeleteDisabledException"/> unless
-    /// <see cref="GmailOptions.AllowPermanentDelete"/> is on.
+    /// Permanently deletes messages. Throws <see cref="DeleteLockedException"/> while the delete lock is on, and
+    /// <see cref="PermanentDeleteDisabledException"/> unless <see cref="GmailOptions.AllowPermanentDelete"/> is also on.
     /// </summary>
     Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
 
@@ -100,7 +103,13 @@ public sealed class GmailOptions
 {
     public const string SectionName = "Nullbox:Gmail";
 
-    /// <summary>Permanent delete is off by default; trash is the recoverable alternative.</summary>
+    /// <summary>
+    /// The app-wide delete lock: off by default, so nothing is moved to Trash or deleted, whichever job or rule asks.
+    /// Callers that can fall back (rules archive instead) check this first; <see cref="IGmailService"/> refuses anyway.
+    /// </summary>
+    public bool AllowDelete { get; set; }
+
+    /// <summary>Permanent delete is off by default and also needs <see cref="AllowDelete"/>; trash is the recoverable alternative.</summary>
     public bool AllowPermanentDelete { get; set; }
 
     /// <summary>Body text is cut to this many characters (bodies are never logged).</summary>
@@ -113,6 +122,10 @@ public sealed class GmailOptions
 
     public TimeSpan RetryMaxDelay { get; set; } = TimeSpan.FromSeconds(32);
 }
+
+/// <summary>The delete lock is on (<see cref="GmailOptions.AllowDelete"/> is off); nothing was sent to Gmail.</summary>
+public sealed class DeleteLockedException()
+    : InvalidOperationException("Deleting mail is locked. Set Nullbox:Gmail:AllowDelete=true to allow moving mail to Trash.");
 
 public sealed class PermanentDeleteDisabledException()
     : InvalidOperationException("Permanent delete is disabled. Set Nullbox:Gmail:AllowPermanentDelete=true to allow it, or use trash.");

@@ -1,19 +1,24 @@
 using Hangfire;
 using Hangfire.Storage;
+using Microsoft.Extensions.Options;
 using Nullbox.Core.Gmail;
 using Nullbox.Core.Jev;
 using Nullbox.Web.Jobs;
 
 namespace Nullbox.Web.Ui;
 
-/// <summary>Everything the dashboard shows, read once per page load.</summary>
+/// <summary>
+/// Everything the dashboard shows, read once per page load. <c>DeletesAllowed</c> is true only when the app-wide
+/// delete lock is lifted (<see cref="GmailOptions.AllowDelete"/>).
+/// </summary>
 public sealed record DashboardSnapshot(
     GmailCredentialStatus? Gmail,
     JobRunStatus? InboxPoll,
     JobRunStatus? Heartbeat,
     QueueStatus Queues,
     JevBudgetStatus? JevBudget,
-    DateTimeOffset ReadAtUtc);
+    DateTimeOffset ReadAtUtc,
+    bool DeletesAllowed = false);
 
 /// <summary>The last run of a recurring job, as Hangfire recorded it.</summary>
 public sealed record JobRunStatus(string JobId, DateTime? LastRunUtc, string? LastState, DateTime? NextRunUtc, string? Error);
@@ -52,7 +57,8 @@ public sealed class DashboardStatusProvider(IServiceProvider services, TimeProvi
                 monitoring.Queues().ToDictionary(q => q.Name, q => q.Length, StringComparer.Ordinal));
         }
 
-        return new DashboardSnapshot(gmail, poll, heartbeat, queues, budget, time.GetUtcNow());
+        var deletesAllowed = services.GetService<IOptions<GmailOptions>>()?.Value.AllowDelete ?? false;
+        return new DashboardSnapshot(gmail, poll, heartbeat, queues, budget, time.GetUtcNow(), deletesAllowed);
     }
 
     private static JobRunStatus? Find(IEnumerable<RecurringJobDto> jobs, string id)
