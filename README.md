@@ -43,12 +43,27 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Hangfire:WorkerCount` | `2` | Hangfire worker threads. |
 | `Nullbox:Hangfire:DashboardPath` | `/hangfire` | Dashboard URL, behind the admin login. |
 | `Nullbox:Jobs:HeartbeatCron` | `*/5 * * * *` | No-op heartbeat job (UTC) that proves the scheduler runs. |
+| `Nullbox:Jobs:InboxPollCron` | `*/5 * * * *` | How often the `inbox-poll` job checks Gmail for new inbox mail (UTC). |
+| `Nullbox:Jobs:InboxResyncWindow` | `2d` | Gmail `newer_than:` window listed on first run and when history has expired. |
+| `Nullbox:Jobs:MessageWorkers` | `2` | Messages processed at once (workers on the `inbox` queue). |
 
 ## Jobs and dashboard
 
 Hangfire runs inside the web app. Sign in at `/login` with `ADMIN_PASSWORD` to open the dashboard at `/hangfire`,
 where the `heartbeat` recurring job shows up and can be triggered by hand. Jobs are registered through
 `IJobScheduler` (in `Nullbox.Core`), so nothing outside `Nullbox.Web` references Hangfire.
+
+## Inbox polling
+
+The `inbox-poll` recurring job reads Gmail's history since the last stored history id and enqueues one
+`ProcessMessageJob` per new inbox message on the `inbox` queue. On first run, and when Gmail no longer has history
+that far back, it lists `in:inbox newer_than:{InboxResyncWindow}` instead. Message ids already handed off are kept
+in `{data}/nullbox.db`, so a message is enqueued once even when it shows up again. Polls never overlap and are not
+retried (the next run carries on). Without a Gmail token the poll records "Gmail not configured" and does nothing.
+
+Signed in as admin: `GET /inbox/status` shows the history id, pause flag and last result; `POST /inbox/pause` and
+`POST /inbox/resume` (with an antiforgery token) stop and restart polling. Processing is a stub until the rule
+pipeline lands.
 
 ## Run in Docker
 

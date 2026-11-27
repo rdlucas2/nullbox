@@ -41,4 +41,16 @@ public sealed class JobSettings
 {
     /// <summary>Cron for the no-op heartbeat job that proves the scheduler is alive.</summary>
     public string HeartbeatCron { get; set; } = "*/5 * * * *";
+
+    /// <summary>Cron for the inbox poll (UTC).</summary>
+    public string InboxPollCron { get; set; } = "*/5 * * * *";
+
+    /// <summary>
+    /// Gmail <c>newer_than:</c> window used on first run and when history has expired, e.g. <c>2d</c>.
+    /// Already-processed messages in that window are skipped.
+    /// </summary>
+    public string InboxResyncWindow { get; set; } = "2d";
+
+    /// <summary>How many messages are processed at once (workers on the inbox queue).</summary>
+    public int MessageWorkers { get; set; } = 2;
 }

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Hangfire;
 using Hangfire.Storage.SQLite;
 using Microsoft.AspNetCore.DataProtection;
@@ -9,7 +10,7 @@ using Nullbox.Web.Jobs;
 
 namespace Nullbox.Web.Hosting;
 
-public static class NullboxHosting
+public static partial class NullboxHosting
 {
     /// <summary>Binds <see cref="NullboxOptions"/>, honouring the container's plain env vars as fallbacks.</summary>
     public static IServiceCollection AddNullboxOptions(this IServiceCollection services, IConfiguration configuration)
@@ -20,6 +21,9 @@ public static class NullboxHosting
             .Validate(o => o.Hangfire.WorkerCount >= 1, "Nullbox:Hangfire:WorkerCount must be at least 1.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.DataDirectory), "Nullbox:DataDirectory is required.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.Jobs.HeartbeatCron), "Nullbox:Jobs:HeartbeatCron is required.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Jobs.InboxPollCron), "Nullbox:Jobs:InboxPollCron is required.")
+            .Validate(o => o.Jobs.MessageWorkers >= 1, "Nullbox:Jobs:MessageWorkers must be at least 1.")
+            .Validate(o => ResyncWindowPattern().IsMatch(o.Jobs.InboxResyncWindow ?? string.Empty), "Nullbox:Jobs:InboxResyncWindow must look like 2d, 12h or 1m (Gmail newer_than:).")
             .ValidateOnStart();
         return services;
     }
@@ -138,4 +142,7 @@ public static class NullboxHosting
             app.Logger.LogWarning("ADMIN_PASSWORD is not set: the dashboard and UI cannot be signed in to.");
         }
     }
+
+    [GeneratedRegex("^[1-9][0-9]{0,3}[dmy]$|^[1-9][0-9]{0,4}h$")]
+    private static partial Regex ResyncWindowPattern();
 }
