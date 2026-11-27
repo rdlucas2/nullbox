@@ -42,6 +42,9 @@ public interface IGmailCredentialStore
     /// <summary>Validates an uploaded authorized-user token, proves it with <c>users.getProfile</c>, then saves it.</summary>
     /// <returns>The account's email address.</returns>
     Task<string> ReplaceTokenAsync(GmailTokenKind kind, string tokenJson, CancellationToken cancellationToken = default);
+
+    /// <summary>Disconnects: deletes the token file, so nothing uses it until a new one is uploaded. False if there was none.</summary>
+    bool RemoveToken(GmailTokenKind kind);
 }
 
 /// <summary>Thrown when no token file exists for the requested kind.</summary>

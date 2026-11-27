@@ -2,6 +2,8 @@ using MudBlazor.Services;
 using Nullbox.Core.Rules;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Components;
+using Nullbox.Web.Ui.Audit;
+using Nullbox.Web.Ui.Jobs;
 using Nullbox.Web.Ui.Rules;
 
 namespace Nullbox.Web.Ui;
@@ -16,6 +18,9 @@ public static class UiHosting
         services.AddCascadingAuthenticationState();
         services.AddScoped<DashboardStatusProvider>();
         services.AddScoped<RuleSetCatalog>();
+        services.AddScoped<DecisionUndo>();
+        services.AddScoped<JobControls>();
+        services.AddHostedService<StoredPollSchedule>(); // after AddNullboxData's migrations, which start first
         return services;
     }
 

@@ -180,5 +180,7 @@ public sealed class RunCleanupJobTests : IAsyncLifetime
         public IReadOnlyList<CleanupConfigEntry> List() => [.. Entries.Values];
 
         public CleanupConfigEntry? Get(string id) => Entries.GetValueOrDefault(id);
+
+        public CleanupConfigEntry Save(string id, string json) => Entries[id] = new CleanupConfigEntry(id, CleanupConfig.Parse(json), null);
     }
 }

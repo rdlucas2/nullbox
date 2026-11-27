@@ -1,6 +1,221 @@
 @page "/audit"
+@using System.Globalization
+@using Nullbox.Core.Pipeline
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Ui.Audit
+@inject IDecisionLog Log
+@inject DecisionUndo Undo
 
 <PageTitle>Audit · nullbox</PageTitle>
 
-<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Audit</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Every decision with its Jev answers, the actions taken or skipped in dry run, and undo where possible. Arrives with M3-17.</MudAlert>
+<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-2">Audit</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Every rule set's verdict on every message: what matched, what was done (or would have been, in a dry run), what was
+    held back, and Jev's answers. Applied decisions can be undone.
+</MudText>
+
+<MudPaper Class="pa-3 mb-3" Outlined="true">
+    <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.End" Spacing="2">
+        <MudTextField T="string" Label="Rule set" @bind-Value="_ruleSet" Immediate="true" Style="max-width: 14rem;" data-testid="filter-rule-set" />
+        <label class="mud-typography-caption">
+            Outcome<br />
+            <select value="@(_outcome?.ToString() ?? string.Empty)" @onchange="@(e => _outcome = Enum.TryParse<DecisionOutcome>((string?)e.Value, out var o) ? o : null)" data-testid="filter-outcome">
+                <option value="">any</option>
+                @foreach (var outcome in Enum.GetValues<DecisionOutcome>())
+                {
+                    <option value="@outcome">@Describe(outcome)</option>
+                }
+            </select>
+        </label>
+        <MudTextField T="string" Label="Action starts with" @bind-Value="_action" Immediate="true" Placeholder="archive, delete, label:…" Style="max-width: 12rem;" data-testid="filter-action" />
+        <MudTextField T="string" Label="Message id" @bind-Value="_messageId" Immediate="true" Style="max-width: 12rem;" data-testid="filter-message" />
+        <MudTextField T="string" Label="Confidence at most" @bind-Value="_maxConfidence" Immediate="true" Placeholder="0.6" Style="max-width: 9rem;" data-testid="filter-max-confidence" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" data-testid="search">Search</MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="@(_messageIsError ? Severity.Error : Severity.Success)" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+@if (_pendingUndo is { } undo)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="confirm-undo">
+        Undo @undo.RuleSetKey on message @undo.MessageId? This takes off the labels and star it added, marks unread and
+        moves back to the inbox what it read or archived, and restores it from Trash if it was deleted. Labels the
+        message already had stay.
+        <MudStack Row="true" Class="mt-2">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="UndoAsync" data-testid="confirm-undo-yes">Undo it</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _pendingUndo = null)" data-testid="confirm-undo-no">Cancel</MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@if (_items is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" data-testid="empty">No decisions match.</MudAlert>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Striped="true" data-testid="decisions">
+        <thead>
+            <tr><th>When (UTC)</th><th>Message</th><th>Rule set</th><th>Outcome</th><th>Decisions</th><th>Actions</th><th>Confidence</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var record in _items)
+            {
+                <tr data-testid="decision-@record.Id">
+                    <td>@record.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td><code>@record.MessageId</code></td>
+                    <td>@record.RuleSetKey</td>
+                    <td><MudChip T="string" Size="Size.Small" Color="@OutcomeColor(record.Outcome)">@Describe(record.Outcome)</MudChip></td>
+                    <td>@string.Join(", ", record.Decisions)</td>
+                    <td>
+                        @string.Join(", ", record.Actions)
+                        @if (record.Skipped.Count > 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">@record.Skipped.Count held back</MudText>
+                        }
+                    </td>
+                    <td>@(record.Confidence?.ToString("0.00", CultureInfo.InvariantCulture) ?? "–")</td>
+                    <td style="white-space: nowrap;">
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => _selected = record)" data-testid="details">Details</MudButton>
+                        @if (DecisionUndo.CanUndo(record) && !_undone.Contains(record.Id))
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => _pendingUndo = record)" data-testid="undo">Undo</MudButton>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+    @if (_next is not null)
+    {
+        <MudButton Class="mt-2" Variant="Variant.Outlined" OnClick="MoreAsync" data-testid="more">Older decisions</MudButton>
+    }
+}
+
+@if (_selected is { } selected)
+{
+    <MudPaper Class="pa-4 mt-4" Outlined="true" data-testid="detail">
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h6">@selected.RuleSetKey on <code>@selected.MessageId</code></MudText>
+            <MudSpacer />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Close details" OnClick="@(() => _selected = null)" />
+        </MudStack>
+        <MudText Typo="Typo.body2">@Describe(selected.Outcome), @(selected.Mode == RuleSetMode.Live ? "live" : "dry run"), model @selected.Model</MudText>
+        @if (selected.Error is { } error)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="my-2">@error</MudAlert>
+        }
+        <MudText Typo="Typo.subtitle2" Class="mt-2">Held back</MudText>
+        <MudText Typo="Typo.body2" data-testid="detail-skipped">@(selected.Skipped.Count == 0 ? "nothing" : string.Join("; ", selected.Skipped))</MudText>
+        <MudText Typo="Typo.subtitle2" Class="mt-2">Labels when it ran</MudText>
+        <MudText Typo="Typo.body2">@string.Join(", ", selected.Labels)</MudText>
+        <MudText Typo="Typo.subtitle2" Class="mt-2">Jev's answers</MudText>
+        <pre class="mud-typography-body2" style="white-space: pre-wrap;" data-testid="detail-answers">@selected.AnswersJson</pre>
+        @if (selected.StateJson is { } state)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mt-2">What Jev saw (body shortened)</MudText>
+            <pre class="mud-typography-body2" style="white-space: pre-wrap;">@state</pre>
+        }
+        @if (selected.InputsHash is { } hash)
+        {
+            <MudText Typo="Typo.caption">Inputs hash @hash</MudText>
+        }
+    </MudPaper>
+}
+
+@code {
+    private string? _ruleSet;
+    private DecisionOutcome? _outcome;
+    private string? _action;
+    private string? _messageId;
+    private string? _maxConfidence;
+    private List<DecisionRecord>? _items;
+    private long? _next;
+    private DecisionRecord? _selected;
+    private DecisionRecord? _pendingUndo;
+    private readonly HashSet<long> _undone = [];
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override Task OnInitializedAsync() => SearchAsync();
+
+    private DecisionQuery Query(long? before) => new()
+    {
+        RuleSet = string.IsNullOrWhiteSpace(_ruleSet) ? null : _ruleSet.Trim(),
+        Outcome = _outcome,
+        Action = string.IsNullOrWhiteSpace(_action) ? null : _action.Trim(),
+        MessageId = string.IsNullOrWhiteSpace(_messageId) ? null : _messageId.Trim(),
+        MaxConfidence = double.TryParse(_maxConfidence, NumberStyles.Float, CultureInfo.InvariantCulture, out var max) ? max : null,
+        Before = before,
+        Limit = 50,
+    };
+
+    private async Task SearchAsync()
+    {
+        var page = await Log.QueryAsync(Query(null));
+        _items = [.. page.Items];
+        _next = page.Next;
+        _selected = null;
+    }
+
+    private async Task MoreAsync()
+    {
+        var page = await Log.QueryAsync(Query(_next));
+        _items!.AddRange(page.Items);
+        _next = page.Next;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (_pendingUndo is not { } record)
+        {
+            return;
+        }
+
+        _pendingUndo = null;
+        try
+        {
+            var result = await Undo.UndoAsync(record);
+            _messageIsError = !result.Done;
+            _message = result.Done
+                ? $"Undone on {record.MessageId}: {(result.Reversed.Count == 0 ? "nothing needed reversing" : string.Join(", ", result.Reversed))}."
+                : result.Problem;
+            _undone.Add(record.Id);
+            await SearchAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _messageIsError = true;
+            _message = $"Could not undo: {ex.Message}";
+        }
+    }
+
+    private static string Describe(DecisionOutcome outcome) => outcome switch
+    {
+        DecisionOutcome.DryRun => "dry run",
+        DecisionOutcome.Applied => "applied",
+        DecisionOutcome.NoChange => "no change",
+        DecisionOutcome.KillSwitch => "kill switch",
+        DecisionOutcome.CapReached => "cap reached",
+        DecisionOutcome.Error => "error",
+        DecisionOutcome.Undone => "undone",
+        _ => outcome.ToString(),
+    };
+
+    private static MudBlazor.Color OutcomeColor(DecisionOutcome outcome) => outcome switch
+    {
+        DecisionOutcome.Applied => MudBlazor.Color.Success,
+        DecisionOutcome.Error => MudBlazor.Color.Error,
+        DecisionOutcome.KillSwitch or DecisionOutcome.CapReached => MudBlazor.Color.Warning,
+        DecisionOutcome.Undone => MudBlazor.Color.Info,
+        _ => MudBlazor.Color.Default,
+    };
+}

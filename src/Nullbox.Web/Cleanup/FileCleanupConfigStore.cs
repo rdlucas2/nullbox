@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Nullbox.Core.Cleanup;
+using Nullbox.Gmail.Auth;
 
 namespace Nullbox.Web.Cleanup;
 
@@ -35,6 +36,25 @@ public sealed partial class FileCleanupConfigStore(string directory) : ICleanupC
         => IsValidId(id) && File.Exists(PathFor(id)) ? Read(id) : null;
 
     public static bool IsValidId(string? id) => id is not null && IdPattern().IsMatch(id);
+
+    /// <summary>Checks the JSON parses, then writes it through a temp file and rename (owner-only on Unix).</summary>
+    public CleanupConfigEntry Save(string id, string json)
+    {
+        if (!IsValidId(id))
+        {
+            throw new ArgumentException("Use letters, digits, - and _ for the file name (up to 100).", nameof(id));
+        }
+
+        var config = CleanupConfig.Parse(json);
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > MaxFileBytes)
+        {
+            throw new CleanupConfigException($"Cleanup files are limited to {MaxFileBytes / 1024} KB.");
+        }
+
+        System.IO.Directory.CreateDirectory(Directory);
+        GoogleCredentialFiles.WriteAtomically(PathFor(id), json);
+        return new CleanupConfigEntry(id, config, null);
+    }
 
     private string PathFor(string id) => Path.Combine(Directory, id + ".json");
 

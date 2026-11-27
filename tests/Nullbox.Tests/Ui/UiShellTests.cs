@@ -51,6 +51,7 @@ public sealed class UiShellTests(NullboxAppFactory factory)
     [InlineData("/test", "Test")]
     [InlineData("/audit", "Audit")]
     [InlineData("/jobs", "Open the Hangfire dashboard")]
+    [InlineData("/cleanup", "Cleanup &amp; filters")]
     [InlineData("/settings", "Gmail connection")]
     public async Task Section_pages_render_when_signed_in(string path, string expected)
     {

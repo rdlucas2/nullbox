@@ -30,6 +30,10 @@ public enum DecisionOutcome
     /// <summary>Asking Jev or changing Gmail failed; <see cref="DecisionRecord.Error"/> says why. The message is retried.</summary>
     [JsonStringEnumMemberName("error")]
     Error,
+
+    /// <summary>An earlier <see cref="Applied"/> record was undone from the audit page; <see cref="DecisionRecord.Actions"/> lists the reversal.</summary>
+    [JsonStringEnumMemberName("undone")]
+    Undone,
 }
 
 /// <summary>

@@ -36,14 +36,27 @@ The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /ap
 ## Web UI
 
 Sign in at `/login` with `ADMIN_PASSWORD`; every UI page redirects there until you do. The shell is Blazor
-(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Test, Audit, Jobs and Settings, a
+(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Test, Audit, Cleanup, Jobs and Settings, a
 light/dark toggle (follows the system setting until you switch it) and a sign-out button.
 
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
 token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports rule sets
-([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test, Audit and Jobs are placeholders that later milestones fill
-in; Jobs links to the Hangfire dashboard meanwhile.
+([docs/rules.md](docs/rules.md#editing-in-the-ui)).
+
+- **Audit** (`/audit`): every decision, filterable by rule set, outcome, action, message and confidence, with
+  details (what was held back and why, Jev's answers, what Jev saw). An applied decision can be **undone** after a
+  confirmation: the labels and star it added come off, read or archived mail goes back to unread and the inbox, and
+  deleted mail comes back out of Trash. Labels the message already had stay. The undo is logged as an `undone` record.
+- **Cleanup** (`/cleanup`): edit the cleanup rule files in `data/cleanup/` with a form or as JSON (the same
+  emailBlaster format), dry-run them with per-rule counts and top senders, and apply after a confirmation that
+  quotes the last dry run. Filters from `data/filters.json` can be dry-run and then created after a confirmation.
+- **Jobs** (`/jobs`): the kill switch (turning it **off** needs a confirmation), pause and resume the inbox poll,
+  "run now", and the poll's cron. A cron set here is kept in the database and overrides `Nullbox:Jobs:InboxPollCron`
+  until "Use configured" is pressed.
+- **Settings** (`/settings`): both Gmail tokens, with disconnect (after a confirmation), the Jev budget, audit
+  retention, and the safety switches. The delete lock, permanent delete and filter sync are **read-only** here on
+  purpose: changing them takes a config change and a restart, so letting nullbox delete mail is never one click away.
 
 ## Configuration
 

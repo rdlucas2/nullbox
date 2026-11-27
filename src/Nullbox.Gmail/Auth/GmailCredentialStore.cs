@@ -134,6 +134,29 @@ public sealed class GmailCredentialStore : IGmailCredentialStore
         return email;
     }
 
+    public bool RemoveToken(GmailTokenKind kind)
+    {
+        bool removed;
+        lock (_gate)
+        {
+            var path = _files.TokenPath(kind);
+            removed = File.Exists(path);
+            if (removed)
+            {
+                File.Delete(path);
+            }
+
+            _entries.Remove(kind);
+        }
+
+        if (removed)
+        {
+            _logger.LogWarning("Gmail {Kind} token removed (disconnected)", kind);
+        }
+
+        return removed;
+    }
+
     private Entry Load(GmailTokenKind kind)
     {
         var path = _files.TokenPath(kind);

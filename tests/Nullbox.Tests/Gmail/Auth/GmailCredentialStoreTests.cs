@@ -79,6 +79,20 @@ public sealed class GmailCredentialStoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(_files.Directory, "*.tmp"));
     }
 
+    [Fact]
+    public void Removing_a_token_disconnects_until_a_new_one_is_written()
+    {
+        WriteToken(TokenSamples.EmailBlasterToken(DateTimeOffset.UtcNow.AddHours(1)));
+        var store = Store();
+        Assert.Equal(GmailAuthState.Ready, store.GetStatus(GmailTokenKind.Primary).State);
+
+        Assert.True(store.RemoveToken(GmailTokenKind.Primary));
+
+        Assert.False(File.Exists(_files.TokenPath(GmailTokenKind.Primary)));
+        Assert.Equal(GmailAuthState.NotConfigured, store.GetStatus(GmailTokenKind.Primary).State);
+        Assert.False(store.RemoveToken(GmailTokenKind.Primary));
+    }
+
     [Theory]
     [InlineData("invalid_grant")]
     [InlineData("invalid_client")]

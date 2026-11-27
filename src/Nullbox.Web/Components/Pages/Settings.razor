@@ -1,11 +1,127 @@
 @page "/settings"
+@using System.Globalization
+@using Microsoft.Extensions.Options
+@using Nullbox.Core.Gmail
+@using Nullbox.Core.Jev
+@using Nullbox.Core.Options
+@inject IServiceProvider Services
+@inject IOptions<NullboxOptions> Options
 
 <PageTitle>Settings · nullbox</PageTitle>
 
 <MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Settings</MudText>
-<MudList T="string">
-    <MudListItem T="string" Icon="@Icons.Material.Filled.Email">
-        <a href="/settings/gmail" target="_self">Gmail connection</a>: upload a new token.json or check which scopes it has.
-    </MudListItem>
-</MudList>
-<MudText Typo="Typo.body2" Class="mt-2">Feature flags, the Jev budget and retention settings arrive with M3-17.</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Outlined="true" data-testid="gmail">
+            <MudText Typo="Typo.h6">Gmail connection</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2"><a href="/settings/gmail" target="_self">Upload a token.json</a> to connect or reauthorize.</MudText>
+            @foreach (var kind in new[] { GmailTokenKind.Primary, GmailTokenKind.Filters })
+            {
+                var status = Store?.GetStatus(kind);
+                <MudPaper Class="pa-2 mt-2" Outlined="true" data-testid="@($"token-{kind}")">
+                    <MudText Typo="Typo.subtitle2">@(kind == GmailTokenKind.Primary ? "Mail token (token.json)" : "Filters token (token_filters.json)")</MudText>
+                    <MudText Typo="Typo.body2" data-testid="token-state">@Describe(status)</MudText>
+                    @if (status is { State: not GmailAuthState.NotConfigured })
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block">Scopes: @(status.Scopes.Count == 0 ? "unknown" : string.Join(", ", status.Scopes))</MudText>
+                        @if (_pendingDisconnect == kind)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-testid="confirm-disconnect">
+                                Disconnect the @(kind == GmailTokenKind.Primary ? "mail" : "filters") token? Its file is deleted;
+                                @(kind == GmailTokenKind.Primary ? "polling and rule sets stop until a new token.json is uploaded." : "filter sync stops until a new token_filters.json is uploaded.")
+                                <MudStack Row="true" Class="mt-2">
+                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => Disconnect(kind))" data-testid="confirm-disconnect-yes">Disconnect</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _pendingDisconnect = null)" data-testid="confirm-disconnect-no">Keep it</MudButton>
+                                </MudStack>
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" Class="mt-1" OnClick="@(() => _pendingDisconnect = kind)" data-testid="disconnect">Disconnect…</MudButton>
+                        }
+                    }
+                </MudPaper>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Outlined="true" data-testid="safety">
+            <MudText Typo="Typo.h6">Safety switches</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                These are set in <code>.env</code> or <code>appsettings.json</code> and take a restart, on purpose: letting
+                nullbox delete mail should never be one click away.
+            </MudText>
+            <MudSimpleTable Dense="true">
+                <thead><tr><th>Setting</th><th>Now</th><th>Change with</th></tr></thead>
+                <tbody>
+                    <tr data-testid="flag-delete"><td>Delete lock</td><td>@(Gmail.AllowDelete ? "lifted: rules set to Delete move mail to Trash" : "on: nothing is moved to Trash")</td><td><code>Nullbox__Gmail__AllowDelete</code></td></tr>
+                    <tr data-testid="flag-permanent"><td>Permanent delete (bulk jobs only)</td><td>@(Gmail.AllowPermanentDelete ? "allowed (also needs the lock lifted)" : "off")</td><td><code>Nullbox__Gmail__AllowPermanentDelete</code></td></tr>
+                    <tr data-testid="flag-filters"><td>Filter sync</td><td>@(Gmail.AllowFilterSync ? "can create filters" : "dry runs only")</td><td><code>Nullbox__Gmail__AllowFilterSync</code></td></tr>
+                    <tr><td>Kill switch from config</td><td>@(Options.Value.Pipeline.KillSwitch ? "on" : "off") (the Jobs page has the runtime switch)</td><td><code>Nullbox__Pipeline__KillSwitch</code></td></tr>
+                    <tr><td>Messages changed per hour</td><td>@Options.Value.Pipeline.MaxMessagesPerHour</td><td><code>Nullbox__Pipeline__MaxMessagesPerHour</code></td></tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Outlined="true" data-testid="jev">
+            <MudText Typo="Typo.h6">Jev budget</MudText>
+            @if (_budget is { } b)
+            {
+                <MudText Typo="Typo.body2">@b.InputTokensToday.ToString("N0", CultureInfo.InvariantCulture) of @b.MaxInputTokensPerDay.ToString("N0", CultureInfo.InvariantCulture) input tokens today@(b.OverBudget ? " (over budget: messages wait for tomorrow)" : string.Empty).</MudText>
+                <MudText Typo="Typo.body2">@b.RequestsLastHour of @b.MaxRequestsPerHour requests in the last hour.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">Jev is not set up (set JEV_API_KEY).</MudText>
+            }
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Outlined="true" data-testid="retention">
+            <MudText Typo="Typo.h6">Audit retention</MudText>
+            <MudText Typo="Typo.body2">
+                @(Options.Value.Audit.RetentionDays > 0 ? $"Decisions are kept for {Options.Value.Audit.RetentionDays} days" : "Decisions are kept forever"),
+                purged on <code>@Options.Value.Audit.PurgeCron</code> (UTC). Stored bodies are cut to @Options.Value.Audit.StoredBodyChars characters.
+            </MudText>
+            <MudText Typo="Typo.caption">Change with <code>Nullbox__Audit__RetentionDays</code>.</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private JevBudgetStatus? _budget;
+    private GmailTokenKind? _pendingDisconnect;
+    private string? _message;
+
+    private IGmailCredentialStore? Store => Services.GetService<IGmailCredentialStore>();
+
+    private GmailOptions Gmail => Services.GetService<IOptions<GmailOptions>>()?.Value ?? new GmailOptions();
+
+    protected override async Task OnInitializedAsync()
+        => _budget = Services.GetService<IJevBudget>() is { } jev ? await jev.GetStatusAsync() : null;
+
+    private void Disconnect(GmailTokenKind kind)
+    {
+        _pendingDisconnect = null;
+        var removed = Store?.RemoveToken(kind) ?? false;
+        _message = removed ? $"Disconnected the {(kind == GmailTokenKind.Primary ? "mail" : "filters")} token." : "There was no token to remove.";
+    }
+
+    private static string Describe(GmailCredentialStatus? status) => status?.State switch
+    {
+        GmailAuthState.Ready => "Connected",
+        GmailAuthState.ReauthorizationRequired => $"Needs reauthorizing: {status.Message}",
+        GmailAuthState.Invalid => $"Invalid: {status.Message}",
+        _ => "Not connected",
+    };
+}

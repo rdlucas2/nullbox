@@ -1,9 +1,178 @@
 @page "/jobs"
+@using System.Globalization
+@using Nullbox.Web.Ui
+@using Nullbox.Web.Ui.Jobs
+@inject JobControls Controls
+@inject DashboardStatusProvider Status
 
 <PageTitle>Jobs · nullbox</PageTitle>
 
-<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Jobs</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-4">
-    Editing the poll schedule, pausing and "run now" arrive with M3-17. Until then the Hangfire dashboard shows every job.
-</MudAlert>
-<MudButton Href="/hangfire" Target="_blank" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.OpenInNew">Open the Hangfire dashboard</MudButton>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4" Tag="@("h1")">Jobs</MudText>
+    <MudSpacer />
+    <MudButton Href="/hangfire" Target="_blank" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.OpenInNew">Open the Hangfire dashboard</MudButton>
+</MudStack>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="@(_messageIsError ? Severity.Error : Severity.Success)" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+@if (_state is not { } state)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Outlined="true" data-testid="kill-switch-card">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Kill switch</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Size="Size.Small" Color="@(state.KillSwitch ? Color.Error : Color.Success)" data-testid="kill-switch-state">@(state.KillSwitch ? "On: nothing changes in Gmail" : "Off")</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2" Class="my-2">
+                    While it is on, live rule sets only record what they would do, and cleanup and bulk jobs only run as dry runs.
+                </MudText>
+                @if (state.KillSwitchFromConfig)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" data-testid="kill-switch-config">Nullbox:Pipeline:KillSwitch is on in the configuration, so it stays on until that is changed.</MudAlert>
+                }
+                else if (state.KillSwitch)
+                {
+                    @if (_confirmKillSwitchOff)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" data-testid="confirm-kill-switch-off">
+                            Turn the kill switch off? Live rule sets start changing mail again, and cleanup and bulk jobs can apply.
+                            <MudStack Row="true" Class="mt-2">
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="@(() => SetKillSwitchAsync(false))" data-testid="confirm-kill-switch-off-yes">Turn it off</MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _confirmKillSwitchOff = false)" data-testid="confirm-kill-switch-off-no">Keep it on</MudButton>
+                            </MudStack>
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => _confirmKillSwitchOff = true)" data-testid="kill-switch-off">Turn off…</MudButton>
+                    }
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => SetKillSwitchAsync(true))" data-testid="kill-switch-on">Turn on</MudButton>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Outlined="true" data-testid="poll-card">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">Inbox poll</MudText>
+                    <MudSpacer />
+                    <MudChip T="string" Size="Size.Small" Color="@(state.PollPaused ? Color.Warning : Color.Success)" data-testid="poll-state">@(state.PollPaused ? "Paused" : "Running")</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2" Class="my-2" data-testid="poll-last">
+                    Last poll: @(state.LastPollUtc is { } at ? at.UtcDateTime.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture) : "never")@(state.LastPollResult is { } r ? $" · {r}" : string.Empty)
+                    @if (_poll?.NextRunUtc is { } next)
+                    {
+                        <span> · next @next.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)</span>
+                    }
+                </MudText>
+                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudButton Variant="Variant.Outlined" OnClick="@(() => SetPausedAsync(!state.PollPaused))" data-testid="poll-pause">@(state.PollPaused ? "Resume" : "Pause")</MudButton>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="RunNow" data-testid="poll-run-now">Run now</MudButton>
+                </MudStack>
+
+                <MudStack Row="true" AlignItems="AlignItems.End" Spacing="2" Class="mt-4">
+                    <MudTextField T="string" Label="Schedule (cron, UTC)" @bind-Value="_cron" Immediate="true" HelperText="@($"Configured: {state.ConfiguredPollCron}")" data-testid="poll-cron" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(string.IsNullOrWhiteSpace(_cron) || _cron.Trim() == state.PollCron)" OnClick="SaveCronAsync" data-testid="poll-cron-save">Save</MudButton>
+                    @if (state.PollCronFromSettings)
+                    {
+                        <MudButton Variant="Variant.Text" OnClick="ResetCronAsync" data-testid="poll-cron-reset">Use configured</MudButton>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2">Recurring jobs</MudText>
+                <MudSimpleTable Dense="true" data-testid="recurring">
+                    <thead><tr><th>Job</th><th>Last run</th><th>State</th><th>Next run</th></tr></thead>
+                    <tbody>
+                        @foreach (var job in new[] { _poll, _heartbeat }.Where(j => j is not null))
+                        {
+                            <tr>
+                                <td>@job!.JobId</td>
+                                <td>@(job.LastRunUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "–")</td>
+                                <td>@(job.LastState ?? "–")@(string.IsNullOrEmpty(job.Error) ? string.Empty : $" ({job.Error})")</td>
+                                <td>@(job.NextRunUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "–")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private JobsState? _state;
+    private JobRunStatus? _poll;
+    private JobRunStatus? _heartbeat;
+    private string? _cron;
+    private bool _confirmKillSwitchOff;
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _state = await Controls.GetAsync();
+        _cron = _state.PollCron;
+        var snapshot = await Status.GetAsync();
+        (_poll, _heartbeat) = (snapshot.InboxPoll, snapshot.Heartbeat);
+    }
+
+    private async Task SetKillSwitchAsync(bool on)
+    {
+        _confirmKillSwitchOff = false;
+        await Controls.SetKillSwitchAsync(on);
+        Say(on ? "Kill switch on: nothing changes in Gmail until it is turned off." : "Kill switch off.");
+        await LoadAsync();
+    }
+
+    private async Task SetPausedAsync(bool paused)
+    {
+        await Controls.SetPollPausedAsync(paused);
+        Say(paused ? "Inbox poll paused." : "Inbox poll resumed.");
+        await LoadAsync();
+    }
+
+    private void RunNow()
+    {
+        var id = Controls.RunPollNow();
+        Say(id is null ? "The inbox poll is not scheduled yet." : $"Inbox poll started (job {id}).", error: id is null);
+    }
+
+    private async Task SaveCronAsync()
+    {
+        if (await Controls.SetPollCronAsync(_cron) is { } problem)
+        {
+            Say(problem, error: true);
+            return;
+        }
+
+        Say($"Inbox poll now runs on '{_cron!.Trim()}'.");
+        await LoadAsync();
+    }
+
+    private async Task ResetCronAsync()
+    {
+        await Controls.SetPollCronAsync(null);
+        Say("Inbox poll is back on the configured schedule.");
+        await LoadAsync();
+    }
+
+    private void Say(string message, bool error = false) => (_message, _messageIsError) = (message, error);
+}

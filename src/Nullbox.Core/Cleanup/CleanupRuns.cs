@@ -23,6 +23,11 @@ public interface ICleanupConfigStore
 
     /// <summary>Null when there is no such file (or the id is not a valid file name).</summary>
     CleanupConfigEntry? Get(string id);
+
+    /// <summary>Creates or replaces a rule file after checking it parses.</summary>
+    /// <exception cref="CleanupConfigException">The JSON is not a valid cleanup file.</exception>
+    /// <exception cref="ArgumentException">The id is not a plain file name.</exception>
+    CleanupConfigEntry Save(string id, string json);
 }
 
 public enum CleanupRunStatus

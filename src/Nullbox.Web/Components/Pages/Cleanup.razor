@@ -1,0 +1,332 @@
+@page "/cleanup"
+@implements IDisposable
+@using System.Globalization
+@using Nullbox.Core.Cleanup
+@using Nullbox.Core.Filters
+@using Nullbox.Web.Bulk
+@using Nullbox.Web.Cleanup
+@using Nullbox.Web.Ui.Cleanup
+@inject ICleanupConfigStore Configs
+@inject ICleanupRunLog Runs
+@inject CleanupLauncher Launcher
+@inject FilterDefinitionsFile FilterFile
+@inject BulkJobs Bulk
+
+<PageTitle>Cleanup · nullbox</PageTitle>
+
+<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-2">Cleanup &amp; filters</MudText>
+<MudText Typo="Typo.body2" Class="mb-4">
+    Cleanup rules mark read and archive inbox mail by Gmail search, in emailBlaster's format (<code>data/cleanup/*.json</code>).
+    They never delete. Filters label new mail as it arrives.
+</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="@(_messageIsError ? Severity.Error : Severity.Success)" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+<MudGrid>
+    <MudItem xs="12" md="3">
+        <MudPaper Class="pa-3" Outlined="true">
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Rule files</MudText>
+            @foreach (var entry in _entries)
+            {
+                <MudButton FullWidth="true" Variant="@(entry.Id == _id ? Variant.Filled : Variant.Text)" Color="@(entry.Error is null ? Color.Default : Color.Error)"
+                           OnClick="@(() => Select(entry))" data-testid="@($"file-{entry.Id}")">@entry.Id</MudButton>
+            }
+            <MudButton FullWidth="true" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" Class="mt-2" OnClick="New" data-testid="new-file">New file</MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="9">
+        @if (_form is { } form)
+        {
+            var formJson = form.TryToJson(out var formProblem);
+            <MudPaper Class="pa-4 mb-3" Outlined="true" data-testid="editor">
+                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudTextField T="string" Label="File name" @bind-Value="_id" Immediate="true" Disabled="@(!_isNew)" Style="max-width: 14rem;" data-testid="file-id" />
+                    <MudTextField T="string" Label="Label for archived mail" @bind-Value="form.Label" Immediate="true" Placeholder="cleanup_yyyyMMdd" Style="max-width: 16rem;" data-testid="label" />
+                </MudStack>
+                <MudStack Row="true" Spacing="4" Class="mt-2" Wrap="Wrap.Wrap">
+                    <MudCheckBox T="bool" @bind-Value="form.KeepStarred" Label="Never touch starred" data-testid="keep-starred" />
+                    <MudCheckBox T="bool" @bind-Value="form.KeepImportant" Label="Never touch important" data-testid="keep-important" />
+                </MudStack>
+                <MudTextField T="string" Label="Never touch these senders (one per line)" @bind-Value="form.Senders" Lines="3" Immediate="true" data-testid="keep-senders" />
+
+                @for (var i = 0; i < form.Rules.Count; i++)
+                {
+                    var rule = form.Rules[i];
+                    var index = i;
+                    <MudPaper Class="pa-3 mt-3" Outlined="true" data-testid="@($"rule-{index}")">
+                        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+                            <MudTextField T="string" Label="Name" @bind-Value="rule.Name" Immediate="true" Style="max-width: 14rem;" data-testid="rule-name" />
+                            <MudTextField T="string" Label="Gmail search" @bind-Value="rule.Query" Immediate="true" data-testid="rule-query" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="Remove rule" OnClick="@(() => form.Rules.RemoveAt(index))" data-testid="rule-remove" />
+                        </MudStack>
+                        <MudStack Row="true" Spacing="4" Wrap="Wrap.Wrap">
+                            <MudCheckBox T="bool" @bind-Value="rule.UnreadOnly" Label="Unread only" Dense="true" data-testid="rule-unread-only" />
+                            <MudCheckBox T="bool" @bind-Value="rule.MarkRead" Label="Mark read" Dense="true" data-testid="rule-mark-read" />
+                            <MudCheckBox T="bool" @bind-Value="rule.Archive" Label="Archive" Dense="true" data-testid="rule-archive" />
+                        </MudStack>
+                    </MudPaper>
+                }
+                <MudButton Class="mt-2" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => form.Rules.Add(new CleanupRuleForm()))" data-testid="add-rule">Add rule</MudButton>
+
+                <MudText Typo="Typo.subtitle2" Class="mt-3">JSON</MudText>
+                <textarea class="mud-typography-body2 pa-2" style="width: 100%; min-height: 10rem; font-family: monospace;" spellcheck="false"
+                          value="@(formJson ?? string.Empty)" @onchange="LoadJson" data-testid="json"></textarea>
+                @if ((_jsonProblem ?? formProblem) is { } problem)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" data-testid="json-problem">@problem</MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2" Class="mt-3" Wrap="Wrap.Wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(formProblem is not null)" OnClick="Save" data-testid="save">Save</MudButton>
+                    <MudButton Variant="Variant.Outlined" Disabled="@(_isNew || _activeRun is not null)" OnClick="@(() => StartAsync(dryRun: true))" data-testid="dry-run">Dry run</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@(_isNew || _activeRun is not null)" OnClick="@(() => _confirmApply = true)" data-testid="apply">Apply…</MudButton>
+                </MudStack>
+
+                @if (_confirmApply)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-3" data-testid="confirm-apply">
+                        Apply @_id? Matching inbox mail is marked read and archived with the label
+                        @(string.IsNullOrWhiteSpace(form.Label) ? "cleanup_<date>" : form.Label.Trim()). Nothing is deleted.
+                        @if (LastDryRun is { } dry)
+                        {
+                            <span>The last dry run (@dry.CreatedUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC) matched @dry.Matched messages.</span>
+                        }
+                        else
+                        {
+                            <span>There is no dry run of this file yet; consider running one first.</span>
+                        }
+                        <MudStack Row="true" Class="mt-2">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="@(() => StartAsync(dryRun: false))" data-testid="confirm-apply-yes">Apply</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _confirmApply = false)" data-testid="confirm-apply-no">Cancel</MudButton>
+                        </MudStack>
+                    </MudAlert>
+                }
+            </MudPaper>
+        }
+
+        <MudPaper Class="pa-4 mb-3" Outlined="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.subtitle1">Recent runs</MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Refresh" OnClick="RefreshRunsAsync" data-testid="refresh-runs">Refresh</MudButton>
+            </MudStack>
+            @if (_runs.Count == 0)
+            {
+                <MudText Typo="Typo.body2" data-testid="no-runs">No runs yet.</MudText>
+            }
+            @foreach (var run in _runs)
+            {
+                <MudPaper Class="pa-2 mt-2" Outlined="true" data-testid="@($"run-{run.Id}")">
+                    <MudText Typo="Typo.body2">
+                        <b>@run.ConfigId</b> · @(run.DryRun ? "dry run" : "applied") · <span data-testid="run-status">@run.Status</span>
+                        · @run.CreatedUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC
+                        @if (run.Status == CleanupRunStatus.Completed)
+                        {
+                            <span> · @run.Matched matched, @run.Changed changed</span>
+                        }
+                    </MudText>
+                    @if (run.Error is { } error)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error">@error</MudText>
+                    }
+                    @foreach (var rule in run.Rules)
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block">
+                            @rule.Name (@rule.Actions): @rule.Matched matched@(run.DryRun ? string.Empty : $", {rule.Changed} changed")
+                            @if (rule.TopSenders.Count > 0)
+                            {
+                                <span> · top: @string.Join(", ", rule.TopSenders.Select(s => $"{s.Sender} ({s.Count})"))</span>
+                            }
+                        </MudText>
+                    }
+                </MudPaper>
+            }
+        </MudPaper>
+
+        <MudPaper Class="pa-4" Outlined="true" data-testid="filters">
+            <MudText Typo="Typo.subtitle1">Gmail filters</MudText>
+            @if (!FilterFile.Exists)
+            {
+                <MudText Typo="Typo.body2" data-testid="no-filters-file">Copy emailBlaster's filters.json into the data folder to manage filters here.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="mb-2">Each rule in filters.json becomes a filter that labels new mail and skips the inbox. Running it again creates nothing new.</MudText>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" OnClick="@(() => SyncFiltersAsync(dryRun: true))" data-testid="filters-dry-run">Dry run</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="@(_filterResult is not { DryRun: true, BlockedReason: null })" OnClick="@(() => _confirmFilters = true)" data-testid="filters-apply">Create filters…</MudButton>
+                </MudStack>
+                @if (_confirmFilters && _filterResult is { } preview)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="confirm-filters">
+                        Create @preview.Created filters@(preview.LabelsCreated.Count > 0 ? $" and {preview.LabelsCreated.Count} labels" : string.Empty) in Gmail? They act on new mail from now on.
+                        <MudStack Row="true" Class="mt-2">
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="@(() => SyncFiltersAsync(dryRun: false))" data-testid="confirm-filters-yes">Create them</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _confirmFilters = false)" data-testid="confirm-filters-no">Cancel</MudButton>
+                        </MudStack>
+                    </MudAlert>
+                }
+                @if (_filterResult is { } result)
+                {
+                    @if (result.BlockedReason is { } blocked)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" data-testid="filters-blocked">@blocked</MudAlert>
+                    }
+                    <MudSimpleTable Dense="true" Class="mt-2" data-testid="filter-results">
+                        <thead><tr><th>Label</th><th>Search</th><th>Mark read</th><th>Status</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in result.Filters)
+                            {
+                                <tr><td>@item.Label</td><td><code>@item.Query</code></td><td>@(item.MarkRead ? "yes" : "no")</td><td>@Describe(item.Status)</td></tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private IReadOnlyList<CleanupConfigEntry> _entries = [];
+    private IReadOnlyList<CleanupRun> _runs = [];
+    private string? _id;
+    private bool _isNew;
+    private CleanupForm? _form;
+    private string? _jsonProblem;
+    private bool _confirmApply;
+    private long? _activeRun;
+    private FilterSyncResult? _filterResult;
+    private bool _confirmFilters;
+    private string? _message;
+    private bool _messageIsError;
+    private CancellationTokenSource? _polling;
+
+    private CleanupRun? LastDryRun => _runs.FirstOrDefault(r => r.ConfigId == _id && r.DryRun && r.Status == CleanupRunStatus.Completed);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _entries = Configs.List();
+        await RefreshRunsAsync();
+    }
+
+    private void Select(CleanupConfigEntry entry)
+    {
+        (_id, _isNew, _jsonProblem, _confirmApply) = (entry.Id, false, null, false);
+        _form = entry.Config is { } config ? CleanupForm.From(config) : CleanupForm.Starter();
+        if (entry.Error is { } error)
+        {
+            Say($"{entry.Id}.json can't be read: {error} Saving replaces it.", error: true);
+        }
+    }
+
+    private void New() => (_id, _isNew, _form, _jsonProblem, _confirmApply) = (string.Empty, true, CleanupForm.Starter(), null, false);
+
+    private void LoadJson(ChangeEventArgs e)
+    {
+        try
+        {
+            _form = CleanupForm.From(CleanupConfig.Parse((string?)e.Value ?? string.Empty));
+            _jsonProblem = null;
+        }
+        catch (CleanupConfigException ex)
+        {
+            _jsonProblem = $"Not loaded: {ex.Message}";
+        }
+    }
+
+    private void Save()
+    {
+        if (_form?.TryToJson(out _) is not { } json)
+        {
+            return;
+        }
+
+        try
+        {
+            Configs.Save(_id?.Trim() ?? string.Empty, json);
+            _id = _id!.Trim();
+            _isNew = false;
+            _entries = Configs.List();
+            Say($"Saved {_id}.json.");
+        }
+        catch (Exception ex) when (ex is ArgumentException or CleanupConfigException or IOException or UnauthorizedAccessException)
+        {
+            Say($"Not saved: {ex.Message}", error: true);
+        }
+    }
+
+    private async Task StartAsync(bool dryRun)
+    {
+        _confirmApply = false;
+        var run = await Launcher.StartAsync(_id!, dryRun, sampleSize: 25, CancellationToken.None);
+        _activeRun = run.Id;
+        Say(dryRun ? $"Dry run of {_id} started." : $"Cleanup of {_id} started.");
+        await RefreshRunsAsync();
+        StartPolling();
+    }
+
+    private async Task RefreshRunsAsync()
+    {
+        _runs = await Runs.ListAsync(10);
+        if (_activeRun is { } id && _runs.FirstOrDefault(r => r.Id == id) is { Status: not (CleanupRunStatus.Queued or CleanupRunStatus.Running) })
+        {
+            _activeRun = null;
+        }
+    }
+
+    private void StartPolling()
+    {
+        _polling?.Cancel();
+        _polling = new CancellationTokenSource();
+        var token = _polling.Token;
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            while (_activeRun is not null && await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshRunsAsync();
+                    StateHasChanged();
+                });
+            }
+        }, token);
+    }
+
+    private async Task SyncFiltersAsync(bool dryRun)
+    {
+        _confirmFilters = false;
+        try
+        {
+            _filterResult = await Bulk.SyncFiltersAsync(dryRun, CancellationToken.None);
+            if (!dryRun && _filterResult.BlockedReason is null)
+            {
+                Say($"Created {_filterResult.Created} filters; {_filterResult.Existing} already existed.");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Say($"Filter sync failed: {ex.Message}", error: true);
+        }
+    }
+
+    private static string Describe(FilterSyncStatus status) => status switch
+    {
+        FilterSyncStatus.Created => "created",
+        FilterSyncStatus.WouldCreate => "would create",
+        _ => "already exists",
+    };
+
+    private void Say(string message, bool error = false) => (_message, _messageIsError) = (message, error);
+
+    public void Dispose()
+    {
+        _polling?.Cancel();
+        _polling?.Dispose();
+    }
+}
