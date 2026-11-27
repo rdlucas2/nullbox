@@ -27,6 +27,8 @@ services:
       # editable without sudo. The container fixes ./data ownership itself on start.
       NULLBOX_UID: ${NULLBOX_UID:-1654}
       NULLBOX_GID: ${NULLBOX_GID:-}
+      # simple (default) or json: one JSON object per log line, for log shippers. Message content is never logged.
+      Logging__Console__FormatterName: ${NULLBOX_LOG_FORMAT:-simple}
     volumes:
       # SQLite DB + Google credentials.json/token.json (./data/google/). Never commit ./data.
       - ./data:/data

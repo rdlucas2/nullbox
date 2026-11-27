@@ -13,6 +13,9 @@ public static class AdminAuth
 {
     public const string PolicyName = "Admin";
     public const string LoginPath = "/login";
+
+    /// <summary>Rate-limiter policy on <c>POST /login</c> (<see cref="Nullbox.Core.Options.LoginSettings"/>).</summary>
+    public const string LoginRateLimitPolicy = "login";
     public const string LogoutPath = "/logout";
     private const string AdminName = "admin";
 
@@ -68,7 +71,7 @@ public static class AdminAuth
             await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
             return Results.LocalRedirect(SafeReturnUrl(returnUrl));
-        });
+        }).RequireRateLimiting(LoginRateLimitPolicy);
 
         endpoints.MapPost(LogoutPath, async (HttpContext http) =>
         {

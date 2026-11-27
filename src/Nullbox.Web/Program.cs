@@ -30,7 +30,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddNullboxOptions(builder.Configuration);
 builder.Services.AddNullboxDataProtection(builder.Configuration);
-builder.Services.AddHealthChecks();
+builder.Services.AddNullboxHealthChecks();
+builder.Services.AddNullboxLoginRateLimit();
 builder.Services.AddNullboxForwardedHeaders(builder.Configuration);
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
@@ -45,11 +46,13 @@ builder.Services.AddNullboxUi();
 var app = builder.Build();
 
 app.UseNullboxForwardedHeaders();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-app.MapHealthChecks("/healthz");
+app.MapNullboxHealthChecks();
+app.MapNullboxMetrics();
 app.MapGet("/api/info", () => Results.Ok(new { name = AppInfo.Name, version = AppInfo.Version }));
 app.MapAdminAuthEndpoints();
 app.MapNullboxDashboard();

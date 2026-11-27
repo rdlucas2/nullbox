@@ -1,5 +1,6 @@
 namespace Nullbox.Core.Bulk;
 
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<BulkAction>))]
 public enum BulkAction
 {
     /// <summary>Remove INBOX and add a label (main.py <c>--archive-all-mail</c>, batch_archive.py <c>--search</c>).</summary>

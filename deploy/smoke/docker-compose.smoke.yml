@@ -1,0 +1,30 @@
+# End-to-end smoke test: nullbox against fake Gmail, token and Jev endpoints (tools/Nullbox.FakeUpstream).
+# Run with deploy/smoke/run-smoke.sh; it writes the fake token and cleanup file into $SMOKE_DATA first.
+name: nullbox-smoke
+
+services:
+  fake:
+    build:
+      context: ../..
+      dockerfile: tools/Nullbox.FakeUpstream/Dockerfile
+    ports:
+      - "127.0.0.1:${SMOKE_FAKE_PORT:-18481}:8080"
+
+  nullbox:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      - fake
+    ports:
+      - "127.0.0.1:${SMOKE_PORT:-18480}:8080"
+    environment:
+      ADMIN_PASSWORD: smoke-password
+      JEV_API_KEY: fake-jev-key
+      # Testing only: send Gmail, token refreshes and Jev to the fake.
+      Nullbox__Gmail__ApiBaseUri: http://fake:8080/
+      Nullbox__Gmail__TokenEndpoint: http://fake:8080/token
+      Nullbox__Jev__BaseUrl: http://fake:8080/
+      Logging__Console__FormatterName: json
+    volumes:
+      - ${SMOKE_DATA:?set SMOKE_DATA}:/data

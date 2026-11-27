@@ -33,6 +33,8 @@ services:
       NULLBOX_GID: ${NULLBOX_GID:-}
       NULLBOX_BACKUP_DIR: /backups
       NULLBOX_BACKUP_KEEP: ${NULLBOX_BACKUP_KEEP:-14}
+      # simple (default) or json: one JSON object per log line, for log shippers. Message content is never logged.
+      Logging__Console__FormatterName: ${NULLBOX_LOG_FORMAT:-simple}
       # Workstation GC keeps the heap small; the app idles well under the 512 MB cap.
       DOTNET_gcServer: "0"
     volumes:

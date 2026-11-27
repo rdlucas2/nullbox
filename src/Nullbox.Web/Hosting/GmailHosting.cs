@@ -19,11 +19,13 @@ public static class GmailHosting
             sp.GetRequiredService<GoogleCredentialFiles>(),
             sp.GetRequiredService<ILogger<GmailCredentialStore>>(),
             sp.GetService<TimeProvider>(),
-            sp.GetService<Google.Apis.Http.IHttpClientFactory>()));
+            sp.GetService<Google.Apis.Http.IHttpClientFactory>(),
+            sp.GetRequiredService<IOptions<GmailOptions>>().Value.TokenEndpoint));
         services.AddSingleton<IGmailCredentialStore>(sp => sp.GetRequiredService<GmailCredentialStore>());
         services.AddSingleton<IGmailClientFactory>(sp => new GmailClientFactory(
             sp.GetRequiredService<GmailCredentialStore>(),
-            sp.GetService<Google.Apis.Http.IHttpClientFactory>()));
+            sp.GetService<Google.Apis.Http.IHttpClientFactory>(),
+            sp.GetRequiredService<IOptions<GmailOptions>>().Value.ApiBaseUri));
         services.AddSingleton<IGmailService>(sp => new GmailApiService(
             sp.GetRequiredService<IGmailClientFactory>().Create(GmailTokenKind.Primary),
             sp.GetRequiredService<IOptions<GmailOptions>>(),

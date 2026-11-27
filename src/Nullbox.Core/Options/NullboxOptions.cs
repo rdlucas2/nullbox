@@ -15,6 +15,8 @@ public sealed class NullboxOptions
 
     public JobSettings Jobs { get; set; } = new();
 
+    public LoginSettings Login { get; set; } = new();
+
     public PipelineSettings Pipeline { get; set; } = new();
 
     public AuditSettings Audit { get; set; } = new();
@@ -92,4 +94,12 @@ public sealed class AuditSettings
     /// never kept; the inputs hash still covers the whole state.
     /// </summary>
     public int StoredBodyChars { get; set; } = 280;
+}
+
+/// <summary>Brute-force guard on <c>POST /login</c>: attempts allowed per client address in each window.</summary>
+public sealed class LoginSettings
+{
+    public int AttemptsPerWindow { get; set; } = 10;
+
+    public int WindowSeconds { get; set; } = 300;
 }
