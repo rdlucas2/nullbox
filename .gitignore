@@ -4,3 +4,15 @@ obj/
 *.user
 .env
 data/
+
+# Secrets: never commit (credentials live in ./data/google/, which is ignored above)
+credentials.json
+token.json
+token_*.json
+client_secret*.json
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+secrets/
