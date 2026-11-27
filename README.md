@@ -31,18 +31,21 @@ HTTPS are covered in [docs/security.md](docs/security.md).
 
 nullbox is built so that a wrong rule costs you a trip to a label, not lost mail.
 
-- **Archive first.** A rule removes mail only through its Archive | Delete switch. New rules archive, adding the review
-  label `nullbox/review/<rule-set>/<rule>`; switching one to Delete needs a confirmation in the editor.
+- **Promote each rule.** Each rule's switch is Dry run | Keep in inbox | Archive | Delete, and new rules start on
+  **Dry run**: they record what they match, change nothing and never take the first match from the rules below them.
+  Promote a rule to Archive (it adds the review label `nullbox/review/<rule-set>/<rule>`) once its dry runs look
+  right, then to Delete, which needs a confirmation in the editor.
 - **Delete lock** (`Nullbox:Gmail:AllowDelete`, off by default): while it is on, nothing is moved to Trash, whatever a
   rule or job says, and Delete rules archive instead. Rules never delete permanently; bulk permanent delete also needs
-  `AllowPermanentDelete` and is capped per run. These switches are read-only in the UI on purpose.
+  `AllowPermanentDelete` and is capped per run. Changing these on `/settings` asks for confirmation, is saved to
+  `data/settings.json` and only takes effect after a restart.
 - **Kill switch** (Jobs page or `Nullbox:Pipeline:KillSwitch`): live rule sets only record what they would do, and
   cleanup and bulk jobs only dry-run. An hourly cap (`MaxMessagesPerHour`) limits how many messages change.
 - **Protected mail.** Starred and important mail is never marked read or removed unless a rule sets `allow_protected`.
-- **Dry runs everywhere.** Example rule sets, cleanup files, filter sync and bulk jobs all dry-run unless asked, and
-  applying asks for confirmation in the UI.
+- **Dry runs everywhere.** Example rule sets, new rules, cleanup files, filter sync and bulk jobs all dry-run unless
+  asked; a cleanup file can only be applied after a finished dry run, and applying asks for confirmation in the UI.
 - **Everything is logged and undoable.** The audit log keeps every decision with Jev's answers; applied decisions can be
-  undone from `/audit` (labels off, back to the inbox, out of Trash).
+  undone from `/audit` (labels off, back to the inbox, out of Trash), and each undo is logged so it can't run twice.
 - **Privacy.** Message bodies, subjects and snippets are never written to logs (the smoke test checks); Jev only sees
   the fields a rule set's state template names, with the body cut short.
 
@@ -80,21 +83,28 @@ light/dark toggle (follows the system setting until you switch it) and a sign-ou
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
 token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports rule sets
-([docs/rules.md](docs/rules.md#editing-in-the-ui)).
+([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test (`/test`, and the Test tab in the editor) runs a rule set over
+real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)).
 
-- **Audit** (`/audit`): every decision, filterable by rule set, outcome, action, message and confidence, with
-  details (what was held back and why, Jev's answers, what Jev saw). An applied decision can be **undone** after a
-  confirmation: the labels and star it added come off, read or archived mail goes back to unread and the inbox, and
-  deleted mail comes back out of Trash. Labels the message already had stay. The undo is logged as an `undone` record.
-- **Cleanup** (`/cleanup`): edit the cleanup rule files in `data/cleanup/` with a form or as JSON (the same
-  emailBlaster format), dry-run them with per-rule counts and top senders, and apply after a confirmation that
-  quotes the last dry run. Filters from `data/filters.json` can be dry-run and then created after a confirmation.
-- **Jobs** (`/jobs`): the kill switch (turning it **off** needs a confirmation), pause and resume the inbox poll,
-  "run now", and the poll's cron. A cron set here is kept in the database and overrides `Nullbox:Jobs:InboxPollCron`
-  until "Use configured" is pressed.
-- **Settings** (`/settings`): both Gmail tokens, with disconnect (after a confirmation), the Jev budget, audit
-  retention, and the safety switches. The delete lock, permanent delete and filter sync are **read-only** here on
-  purpose: changing them takes a config change and a restart, so letting nullbox delete mail is never one click away.
+The ops pages ask before anything that changes Gmail or deletes data:
+
+- **Audit (`/audit`):** the decision log with the same filters as `GET /pipeline/decisions`, and a detail panel with
+  Jev's answers, the state sent and the actions. A decision applied in live mode can be undone: the message goes back
+  in the inbox (out of Trash for a delete), gets UNREAD back and loses the star and labels the decision added. Steps
+  the message's labels at the time show would change nothing are left out. Each undo is logged as an `undone` record
+  with the steps taken, so it shows in the log and the same decision can't be undone twice. `?messageId=` and
+  `?ruleSet=` start it filtered.
+- **Cleanup (`/cleanup`):** edit the `{data}/cleanup/*.json` files in a form or as JSON, dry-run one with a top-senders
+  sample, and apply it only after a finished dry run of that file. The Gmail filters section dry-runs and applies the
+  filter sync.
+- **Jobs (`/jobs`):** the kill switch (pausing is immediate, resuming asks), pausing the inbox poll, its cron schedule,
+  and each recurring job's last and next run with Run now. It still links to the Hangfire dashboard.
+- **Settings (`/settings`):** each Gmail token's state with upload and disconnect, and the delete lock, permanent
+  delete, filter sync, Jev budgets and audit retention. Saved values go to `{data}/settings.json`.
+
+`{data}/settings.json` is read as the last configuration source when the app starts, so it wins over appsettings.json
+and environment variables. Only the keys the pages offer are written; delete the file to go back to your
+configuration. Saved settings apply after a restart, except the poll schedule, which also applies straight away.
 
 ## Configuration
 
@@ -117,6 +127,7 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Pipeline:MaxMessagesPerHour` | `100` | Most messages changed in any rolling hour; later live decisions are only recorded. |
 | `Nullbox:Pipeline:MaxAttempts` | `4` | Failed attempts before a message is recorded as poison and not retried. |
 | `Nullbox:Pipeline:AuthRetryDelay` | `01:00:00` | Wait before retrying when Gmail or Jev needs re-authorizing. |
+| `Nullbox:Tester:MaxMessages` | `25` | Most messages one rule-tester run evaluates. |
 | `Nullbox:Audit:RetentionDays` | `90` | Decision records older than this are deleted by the daily purge; `0` keeps them forever. |
 | `Nullbox:Audit:PurgeCron` | `17 3 * * *` | When the purge runs (UTC). |
 | `Nullbox:Audit:StoredBodyChars` | `280` | How much of the body sent to Jev a record keeps; `0` keeps none. Full bodies are never stored. |
@@ -149,12 +160,15 @@ Each new message goes through every active rule set ([docs/rules.md](docs/rules.
 (the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
 in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 
-- the rule set's `mode` is `live` (the default in rule-set JSON; the example rule sets, and new rule sets made in the
-  editor, are `dry_run`, which only records what would happen);
+- the rule set's `mode` is `live` (the default, also for new rule sets made in the editor; the example rule sets are
+  `dry_run`, which only records what would happen);
+- the matching rule has been promoted past **Dry run**, which new rules start on;
 - the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
 
-A decision takes mail out of the inbox only through its `remove` switch ([docs/rules.md](docs/rules.md)): `archive`
+Each rule's switch ([docs/rules.md](docs/rules.md)) is Dry run | Keep in inbox | Archive | Delete. `dry_run` records
+the match and changes nothing, and never takes the first match from the rules below it. Mail leaves the inbox only
+through the switch: `archive`
 adds the rule's review label `nullbox/review/<rule-set>/<rule>`, and `delete` moves to Trash only when the delete lock
 is lifted (`Nullbox:Gmail:AllowDelete`). While it is on, a delete archives with the review label and is recorded as
 blocked; when several decisions match, the gentlest removal wins. Starred and important mail is never marked read

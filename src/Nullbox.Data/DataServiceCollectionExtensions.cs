@@ -4,11 +4,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nullbox.Core.Cleanup;
 using Nullbox.Core.Pipeline;
 using Nullbox.Core.Rules;
-using Nullbox.Core.Settings;
 using Nullbox.Data.Cleanup;
 using Nullbox.Data.Pipeline;
 using Nullbox.Data.Rules;
-using Nullbox.Data.Settings;
 
 namespace Nullbox.Data;
 
@@ -31,7 +29,6 @@ public static class DataServiceCollectionExtensions
         services.AddScoped<IDecisionLog>(sp => sp.GetRequiredService<EfDecisionLog>());
         services.AddScoped<IPipelineSettingsStore>(sp => sp.GetRequiredService<EfDecisionLog>());
         services.AddScoped<ICleanupRunLog, EfCleanupRunLog>();
-        services.AddScoped<IAppSettingsStore, EfAppSettingsStore>();
         services.AddHostedService<DatabaseInitializer>();
         return services;
     }

@@ -214,7 +214,8 @@ public sealed class DecisionReplayer(IDecisionLog log, IRuleSetStore ruleSets, I
             : null;
 
     /// <summary>Everything that shapes what Jev is asked; equal keys mean equal requests for the same message.</summary>
-    private static string AskKey(RuleSetDocument document)
+    /// <summary>What a rule set asks Jev (model, state template and questions); equal keys get the same answers.</summary>
+    public static string AskKey(RuleSetDocument document)
         => JsonSerializer.Serialize(new { document.Model, document.State, document.Questions }, RuleJson.Options);
 
     /// <summary>The draft's state built from the stored inputs, or null with the reason when a field wasn't kept.</summary>

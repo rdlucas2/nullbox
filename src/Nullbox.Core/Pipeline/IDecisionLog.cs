@@ -31,7 +31,10 @@ public enum DecisionOutcome
     [JsonStringEnumMemberName("error")]
     Error,
 
-    /// <summary>An earlier <see cref="Applied"/> record was undone from the audit page; <see cref="DecisionRecord.Actions"/> lists the reversal.</summary>
+    /// <summary>
+    /// An earlier <see cref="Applied"/> record was undone from the audit page. <see cref="DecisionRecord.Actions"/> lists
+    /// the steps taken; the record keeps the undone decision's rule-set key and labels, so it can't be undone twice.
+    /// </summary>
     [JsonStringEnumMemberName("undone")]
     Undone,
 }

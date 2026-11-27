@@ -18,32 +18,6 @@ public sealed record CleanupConfig
 
     public IReadOnlyList<CleanupRule> Rules { get; init; } = [];
 
-    /// <summary>The file in emailBlaster's format with every key written out, so it reads the same in both tools.</summary>
-    public string ToJson()
-    {
-        var root = new JsonObject();
-        if (Label is not null)
-        {
-            root["label"] = Label;
-        }
-
-        root["keep"] = new JsonObject
-        {
-            ["starred"] = Keep.Starred,
-            ["important"] = Keep.Important,
-            ["senders"] = new JsonArray([.. Keep.Senders.Select(s => (JsonNode?)JsonValue.Create(s))]),
-        };
-        root["rules"] = new JsonArray([.. Rules.Select(r => (JsonNode?)new JsonObject
-        {
-            ["name"] = r.Name,
-            ["query"] = r.Query,
-            ["unread_only"] = r.UnreadOnly,
-            ["mark_read"] = r.MarkRead,
-            ["archive"] = r.Archive,
-        })]);
-        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
-    }
-
     /// <summary><c>cleanup_yyyyMMdd</c> for the UTC date (cleanup.py uses the local date).</summary>
     public static string DefaultLabel(DateTimeOffset now)
         => "cleanup_" + now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
@@ -88,6 +62,41 @@ public sealed record CleanupConfig
             Rules = [.. rules.Select(ParseRule)],
         };
     }
+
+    /// <summary>
+    /// The config in emailBlaster's format, indented, with every switch written out. <see cref="Parse"/> reads it back
+    /// to an equal config; comments and unknown keys of the file it came from are not kept.
+    /// </summary>
+    public string ToJson()
+    {
+        var root = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(Label))
+        {
+            root["label"] = Label;
+        }
+
+        root["keep"] = new JsonObject
+        {
+            ["starred"] = Keep.Starred,
+            ["important"] = Keep.Important,
+            ["senders"] = new JsonArray([.. Keep.Senders.Select(s => (JsonNode?)JsonValue.Create(s))]),
+        };
+        root["rules"] = new JsonArray([.. Rules.Select(r => (JsonNode?)new JsonObject
+        {
+            ["name"] = r.Name,
+            ["query"] = r.Query,
+            ["unread_only"] = r.UnreadOnly,
+            ["mark_read"] = r.MarkRead,
+            ["archive"] = r.Archive,
+        })]);
+        return root.ToJsonString(WriteOptions);
+    }
+
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     private static CleanupRule ParseRule(JsonNode? node, int index)
     {

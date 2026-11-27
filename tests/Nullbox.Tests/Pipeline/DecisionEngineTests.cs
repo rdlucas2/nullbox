@@ -124,6 +124,32 @@ public sealed class DecisionEngineTests
     }
 
     [Fact]
+    public void A_dry_run_rule_never_takes_the_first_match_from_the_rules_below_it()
+    {
+        var set = WithDecisions(
+            DecisionMatch.First,
+            Removing("trial", "category.choice == \"promo\"", RemoveMode.DryRun),
+            Removing("trusted", "category.confidence >= 0.5", RemoveMode.Archive),
+            Rule("later", "category.confidence >= 0.5", "label:later"));
+
+        var decisions = DecisionEngine.Evaluate(set, Of(("category", Choice("promo", 0.9))));
+
+        Assert.Equal(["trial", "trusted"], Names(decisions)); // the trial is recorded, the first real match still wins
+        Assert.Equal(PlannedRemoval.Archive, ActionPlan.Create(new GmailMessage("m", null, null, null, null, null, ["INBOX"], null, null, null), decisions).Removal);
+    }
+
+    [Fact]
+    public void Only_dry_run_matches_are_all_recorded_under_first_match()
+    {
+        var set = WithDecisions(
+            DecisionMatch.First,
+            Removing("trial-1", "category.confidence >= 0.5", RemoveMode.DryRun),
+            Removing("trial-2", "category.confidence >= 0.5", RemoveMode.DryRun));
+
+        Assert.Equal(["trial-1", "trial-2"], Names(DecisionEngine.Evaluate(set, Of(("category", Choice("promo", 0.9))))));
+    }
+
+    [Fact]
     public void Same_input_gives_the_same_output()
     {
         var first = DecisionEngine.Evaluate(Promo, ConfidentPromo);
@@ -190,6 +216,27 @@ public sealed class ActionPlanTests
         Assert.Equal(PlannedRemoval.None, plan.Removal);
         Assert.Empty(plan.Skipped);
         Assert.True(plan.HasChanges);
+    }
+
+    [Fact]
+    public void A_dry_run_rule_holds_back_everything_it_would_do()
+    {
+        var plan = ActionPlan.Create(Plain, [R("trial", RemoveMode.DryRun, actions: ["label:promo", "mark_read"])], allowDelete: true);
+
+        Assert.False(plan.HasChanges);
+        Assert.Empty(plan.Describe());
+        Assert.Equal(
+            [new SkippedAction("label:promo", "trial", ActionPlan.DryRunDecisionReason), new SkippedAction("mark_read", "trial", ActionPlan.DryRunDecisionReason)],
+            plan.Skipped);
+    }
+
+    [Fact]
+    public void A_dry_run_rule_without_actions_is_still_recorded_and_others_still_apply()
+    {
+        var plan = ActionPlan.Create(Plain, [R("trial", RemoveMode.DryRun), R("trusted", RemoveMode.Archive)]);
+
+        Assert.Equal(["label:nullbox/review/test/trusted", "archive"], plan.Describe());
+        Assert.Equal([new SkippedAction("dry_run", "trial", ActionPlan.DryRunDecisionReason)], plan.Skipped);
     }
 
     [Fact]

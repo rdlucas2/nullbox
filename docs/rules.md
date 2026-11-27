@@ -60,18 +60,22 @@ Patterns from the Jev docs work as ordinary conditions:
 `label:<name>` (created if needed), `mark_read`, `star`, and `none` (match and stop without changing anything; can't be
 combined with other actions or with `remove`).
 
-## Archive first: the `remove` switch
+## Dry run, then archive, then delete: the `remove` switch
 
-Taking mail out of the inbox is not an action; it is each rule's **Archive | Delete** switch, so a rule can only
-delete when you have flipped it on purpose.
+Taking mail out of the inbox is not an action; it is each rule's **Dry run | Archive | Delete** switch, so a rule can
+only delete when you have promoted it on purpose.
 
 | `remove` | What happens to matching mail |
 |---|---|
+| `dry_run` | Nothing changes, even in a live rule set. The match is recorded, and the rule's actions show as held back in the audit log. New rules in the editor start here. |
 | omitted | Stays in the inbox (labels, mark read and star still apply). |
-| `archive` | Leaves the inbox and gets the review label `nullbox/review/<rule-set>/<rule>`. New rules in the editor start here. |
+| `archive` | Leaves the inbox and gets the review label `nullbox/review/<rule-set>/<rule>`. |
 | `delete` | Moves to Trash (Gmail keeps it 30 days). Rules never delete permanently. |
 
-Try a rule on `archive`, look through its review label in Gmail, and flip it to `delete` once you trust it.
+Start a rule on `dry_run` and watch what it matches in the audit log. Promote it to `archive` and look through its
+review label in Gmail, then to `delete` once you trust it. A dry-run rule is recorded but never takes the first
+match, so with `match: first` the rules below it still act as before: adding a rule on trial changes nothing. The audit
+log shows the dry-run match next to the rule that did act, which is what the new rule will take over once promoted.
 
 The review label is named after the rule (lowercase, `-` between words, accents dropped), or `rule-<n>` for an unnamed
 rule, so name your rules to keep the label when you reorder them. Two rules that remove mail can't share a label.
@@ -112,16 +116,17 @@ reached; see the README's "Message pipeline" section.
   "decisions": [
     { "name": "Leave people alone", "when": "from_a_person.noul >= 0.5", "actions": ["none"] },
     { "name": "Archive newsletters", "when": "kind.choice == \"newsletter\" && kind.confidence >= 0.85",
-      "actions": ["mark_read"], "remove": "archive" },
+      "actions": ["mark_read"], "remove": "dry_run" },
     { "name": "Label receipts", "when": "kind.choice == \"receipt\" && kind.confidence >= 0.7",
       "actions": ["label:Receipts"] }
   ]
 }
 ```
 
-New rule sets are live, so once activated "Archive newsletters" archives with the label
-`nullbox/review/inbox-tidy/archive-newsletters`. Check that label in Gmail for a week; when only newsletters are in it,
-switch the rule to Delete (and lift the delete lock if you want it to actually trash).
+"Archive newsletters" starts as a dry run, like every new rule: once the rule set is active it records what it would
+archive and changes nothing (the receipts rule below it still runs). When the audit log shows only newsletters,
+promote it to `archive`; matching mail then gets the label `nullbox/review/inbox-tidy/archive-newsletters`. Check that
+label in Gmail for a week, then switch it to Delete (and lift the delete lock if you want it to actually trash).
 
 **Flag likely phishing without moving it.** A rule with only a label never leaves the inbox:
 
@@ -152,15 +157,37 @@ The editor at `/rules/<name>` (or `/rules/new`) has a tab for each part of the d
   Instructions and criteria are plain text, or JSON when they start with `{` or `[`.
 - **Decisions**: the match mode, then each decision's `when`, actions and `remove` switch. A `when` made of
   comparisons joined by `&&` shows each comparison, with a slider for confidence, probability and noul thresholds; a
-  clause builder appends new comparisons. Switching a decision to Delete asks first, says matching mail goes to Trash
+  clause builder appends new comparisons. The switch offers Dry run (the default for a new rule), Keep in inbox,
+Archive and Delete. Switching a decision to Delete asks first, says matching mail goes to Trash
   (purged by Gmail after 30 days) and links its review label in Gmail; it also says when the delete lock means it
   will still archive. Delete rules without a confidence threshold, or with one below 0.8, get a warning.
 - **JSON**: the document as it would be saved, editable. Applying edited JSON updates the other tabs; JSON that
   fails the checks is not applied. Beside it is the exact request Jev would get for the sample email.
+- **Test**: run the draft over real messages; see [Testing a rule set](#testing-a-rule-set).
 - **Versions**: every saved version, with a line diff against the one before it, and a button that loads an old
   version back into the editor (save it to make it the newest version).
 
 Validation errors (schema and references, with their JSON paths) are listed under the tabs and block saving. Saving
 adds a version but doesn't activate it; **Activate** and **Switch to live / dry run** ask for confirmation and are
 disabled while there are unsaved changes. Switching modes saves the active version with the new mode and activates
-that. Leaving the page with unsaved changes asks first. New rule sets made in the editor start as dry runs.
+that. Leaving the page with unsaved changes asks first. New rule sets made in the editor are live, and each new rule in
+them starts on Dry run.
+
+## Testing a rule set
+
+The editor's **Test** tab tests the draft as it stands, saved or not. `/test` tests the newest saved version of a
+rule set you pick. Either way:
+
+1. Pick the messages: the newest in the inbox, a Gmail search (e.g. `from:shop newer_than:7d`), or a sample of the
+   messages in the decision log for a rule set. Up to `Nullbox:Tester:MaxMessages` (25) per run.
+2. **Check cost** reads the messages and shows how many Jev calls and input tokens the run would take at most, next
+   to today's Jev budget. A run that would go over the day's tokens or the hour's calls is refused before any call.
+3. **Run in dry run** asks Jev and shows, for each message, the state sent, Jev's answers, the decisions that
+   matched and the actions they would take.
+
+Nothing is changed in Gmail: the tester only has read access to it, and records nothing in the decision log. Jev's
+answers are cached like the pipeline's, so running the same draft again over the same messages costs nothing.
+
+With **Compare with the active version** ticked, each message also shows what the active version decides, and rows
+where the actions differ are highlighted. The active version's verdict is taken from the decision log when it has
+already decided that message; otherwise Jev is asked for it too, which the cost check counts.

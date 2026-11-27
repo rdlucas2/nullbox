@@ -29,6 +29,7 @@ public static class InboxHosting
         });
         services.TryAddScoped<IMessageProcessor, MessagePipeline>();
         services.TryAddScoped<DecisionReplayer>();
+        services.TryAddScoped<RuleTester>();
         services.AddTransient<AuditPurgeJob>();
         services.TryAddSingleton<IMessageJobQueue, HangfireMessageJobQueue>();
         services.AddTransient(sp => new InboxPoller(

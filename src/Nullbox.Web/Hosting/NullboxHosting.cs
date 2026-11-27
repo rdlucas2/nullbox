@@ -54,6 +54,13 @@ public static partial class NullboxHosting
         }
     }
 
+    /// <summary>
+    /// Adds <c>{data}/settings.json</c> (values saved from the UI) as the last configuration source, so it wins over
+    /// appsettings.json and environment variables.
+    /// </summary>
+    public static IConfigurationBuilder AddNullboxRuntimeSettings(this IConfigurationManager configuration)
+        => configuration.AddJsonFile(Settings.RuntimeSettingsFile.In(ResolveDataDirectory(configuration)), optional: true, reloadOnChange: false);
+
     /// <summary>Resolves the data directory the same way options binding does, for start-up wiring.</summary>
     public static string ResolveDataDirectory(IConfiguration configuration)
     {
@@ -110,6 +117,7 @@ public static partial class NullboxHosting
         services.AddSingleton<HeartbeatState>();
         services.AddTransient<HeartbeatJob>();
         services.AddSingleton<IJobScheduler, HangfireJobScheduler>();
+        services.AddSingleton<IRecurringJobsReader, HangfireRecurringJobsReader>();
         services.AddHostedService<RecurringJobRegistrar>();
         return services;
     }

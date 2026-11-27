@@ -11,6 +11,7 @@ nullbox holds a Gmail refresh token with full mailbox access, so treat the host 
 | `ADMIN_PASSWORD` | `.env` | The only login. Without it nobody can sign in. |
 | `JEV_API_KEY` | `.env` | Sent only to the Jev endpoint, as a bearer token. |
 | Login cookie keys | `data/keys/` | ASP.NET Data Protection key ring; delete it to sign everyone out. |
+| Saved settings | `data/settings.json` | Written by `/settings` and the Jobs page; overrides `.env`, including the delete settings. |
 
 - Keep `.env` owner-only (`chmod 600 .env`) and out of git (it is gitignored, like `data/`).
 - Compose reads `.env` into the container's environment, so the values show in `docker inspect` to anyone who can
@@ -39,8 +40,11 @@ nullbox holds a Gmail refresh token with full mailbox access, so treat the host 
 ## Safety switches
 
 Deleting mail is off unless `Nullbox:Gmail:AllowDelete=true`, permanent delete also needs `AllowPermanentDelete`, and
-creating Gmail filters needs `AllowFilterSync`. They are configuration, not UI toggles, so a stolen session cannot turn
-them on. See the README's safety model.
+creating Gmail filters needs `AllowFilterSync`. A signed-in admin can change them on `/settings`: turning one on asks
+for confirmation, is written to `data/settings.json` (which overrides `.env` and `appsettings.json`) and only takes
+effect after a restart. So the admin password is what stands between a browser and deleting mail; keep it strong and
+the app LAN-only. Deleting the keys from `data/settings.json` (or the file) goes back to your configuration. See the
+README's safety model.
 
 ## Testing-only settings
 

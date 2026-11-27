@@ -43,8 +43,12 @@ public interface IGmailCredentialStore
     /// <returns>The account's email address.</returns>
     Task<string> ReplaceTokenAsync(GmailTokenKind kind, string tokenJson, CancellationToken cancellationToken = default);
 
-    /// <summary>Disconnects: deletes the token file, so nothing uses it until a new one is uploaded. False if there was none.</summary>
-    bool RemoveToken(GmailTokenKind kind);
+    /// <summary>
+    /// Deletes the token file, so jobs stop using Gmail until a new token is uploaded. Google keeps the grant until it
+    /// is removed under the Google account's third-party access.
+    /// </summary>
+    /// <returns>False when there was no token to delete.</returns>
+    bool Disconnect(GmailTokenKind kind);
 }
 
 /// <summary>Thrown when no token file exists for the requested kind.</summary>

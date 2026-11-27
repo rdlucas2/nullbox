@@ -55,11 +55,8 @@ public sealed class RunCleanupJob(
     }
 }
 
-/// <summary>
-/// Queues a cleanup run and hands it to Hangfire. The Hangfire client is resolved only when a run starts, so a page
-/// that merely shows the launcher's buttons never builds one.
-/// </summary>
-public sealed class CleanupLauncher(ICleanupRunLog runs, IServiceProvider services)
+/// <summary>Queues a cleanup run and hands it to Hangfire.</summary>
+public sealed class CleanupLauncher(ICleanupRunLog runs, IBackgroundJobClient jobs)
 {
     /// <summary>Sender samples read one message each, so they are capped.</summary>
     public const int MaxSampleSize = 500;
@@ -67,7 +64,7 @@ public sealed class CleanupLauncher(ICleanupRunLog runs, IServiceProvider servic
     public async Task<CleanupRun> StartAsync(string configId, bool dryRun, int sampleSize, CancellationToken cancellationToken)
     {
         var run = await runs.QueueAsync(configId, dryRun, Math.Clamp(sampleSize, 0, MaxSampleSize), cancellationToken);
-        services.GetRequiredService<IBackgroundJobClient>().Enqueue<RunCleanupJob>(job => job.ExecuteAsync(run.Id, CancellationToken.None));
+        jobs.Enqueue<RunCleanupJob>(job => job.ExecuteAsync(run.Id, CancellationToken.None));
         return run;
     }
 }

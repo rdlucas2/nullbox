@@ -44,7 +44,8 @@ public static partial class RuleSetValidator
             ValidateDecision($"/decisions/{i}", decision, document.Questions, Add);
 
             // Each removing rule's mail must be reviewable on its own, so two rules can't share a review label.
-            if (decision.Remove is not null && !string.IsNullOrEmpty(document.Name))
+            // Dry-run rules get no label until they are promoted, so they are checked then.
+            if (decision.Remove is RemoveMode.Archive or RemoveMode.Delete && !string.IsNullOrEmpty(document.Name))
             {
                 var label = ReviewLabels.For(document.Name, decision, i);
                 if (reviewLabels.TryGetValue(label, out var first))
@@ -142,7 +143,7 @@ public static partial class RuleSetValidator
         {
             add($"{path}/actions", "Add an action or set remove to archive (use none to match without changing anything).");
         }
-        else if (rule.Remove is not null && actions.Any(a => a.Kind == RuleActionKind.None))
+        else if (rule.Remove is RemoveMode.Archive or RemoveMode.Delete && actions.Any(a => a.Kind == RuleActionKind.None))
         {
             add($"{path}/remove", "none means change nothing, so it cannot be combined with remove.");
         }
