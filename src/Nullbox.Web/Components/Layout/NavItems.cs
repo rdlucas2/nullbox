@@ -13,6 +13,7 @@ public static class NavItems
         new("Rule sets", "/rules", Icons.Material.Filled.Rule),
         new("Test", "/test", Icons.Material.Filled.Science),
         new("Audit", "/audit", Icons.Material.Filled.History),
+        new("Cleanup", "/cleanup", Icons.Material.Filled.CleaningServices),
         new("Jobs", "/jobs", Icons.Material.Filled.Schedule),
         new("Settings", "/settings", Icons.Material.Filled.Settings),
     ];

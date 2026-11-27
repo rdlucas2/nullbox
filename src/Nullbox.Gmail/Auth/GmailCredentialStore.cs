@@ -78,7 +78,26 @@ public sealed class GmailCredentialStore : IGmailCredentialStore
         }
     }
 
-    /// <summary>Marks a token as needing re-authorization after Google refused it mid-request.</summary>
+    /// <summary>Deletes the token file and forgets the cached credential, so Gmail calls fail until a new token is uploaded.</summary>
+    /// <returns>Whether there was a token file to delete.</returns>
+    public bool Disconnect(GmailTokenKind kind)
+    {
+        lock (_gate)
+        {
+            _entries.Remove(kind);
+            var path = _files.TokenPath(kind);
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            File.Delete(path);
+        }
+
+        _logger.LogWarning("Gmail {Kind} token deleted from the settings page", kind);
+        return true;
+    }
+
     internal void MarkRejected(GmailTokenKind kind, string reason)
     {
         lock (_gate)

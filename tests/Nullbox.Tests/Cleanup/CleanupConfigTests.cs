@@ -108,4 +108,33 @@ public sealed class CleanupConfigTests
     [InlineData(false, false, "nothing")]
     public void Rules_describe_what_they_do(bool markRead, bool archive, string expected)
         => Assert.Equal(expected, new CleanupRule { Name = "r", Query = "q", MarkRead = markRead, Archive = archive }.Describe());
+
+    [Fact]
+    public void ToJson_writes_every_switch_and_parses_back_to_an_equal_config()
+    {
+        var config = new CleanupConfig
+        {
+            Label = "tidy_up",
+            Keep = new CleanupKeep { Starred = false, Important = true, Senders = ["boss@example.com", "example.org"] },
+            Rules =
+            [
+                new CleanupRule { Name = "Old promos", Query = "category:promotions older_than:30d" },
+                new CleanupRule { Name = "Read social", Query = "category:social", UnreadOnly = false, MarkRead = false, Archive = true },
+            ],
+        };
+
+        var json = config.ToJson();
+        var back = CleanupConfig.Parse(json);
+
+        Assert.Contains("\"unread_only\": false", json, StringComparison.Ordinal);
+        Assert.Equal(config.Label, back.Label);
+        Assert.Equal(config.Keep.Starred, back.Keep.Starred);
+        Assert.Equal(config.Keep.Important, back.Keep.Important);
+        Assert.Equal(config.Keep.Senders, back.Keep.Senders);
+        Assert.Equal(config.Rules, back.Rules);
+    }
+
+    [Fact]
+    public void ToJson_leaves_out_a_blank_label()
+        => Assert.DoesNotContain("\"label\"", new CleanupConfig { Rules = [new CleanupRule { Name = "a", Query = "b" }] }.ToJson(), StringComparison.Ordinal);
 }

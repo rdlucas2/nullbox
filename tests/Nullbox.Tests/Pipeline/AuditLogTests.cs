@@ -263,6 +263,8 @@ public sealed class AuditLogTests : IAsyncLifetime
 
         public Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+        public Task UntrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

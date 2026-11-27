@@ -1,5 +1,8 @@
+using Hangfire;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Nullbox.Tests.Infrastructure;
 
@@ -30,6 +33,18 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
         {
             builder.UseSetting(key, value);
         }
+    }
+
+    /// <summary>
+    /// Hangfire's log provider is global, so a test host started and disposed later leaves it pointing at a disposed
+    /// logger factory. The job client looks its logger up when it is created; creating it while this host's provider
+    /// is current keeps pages that enqueue jobs (such as /cleanup) working whatever ran in between.
+    /// </summary>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        host.Services.GetService<IBackgroundJobClient>();
+        return host;
     }
 
     protected override void Dispose(bool disposing)

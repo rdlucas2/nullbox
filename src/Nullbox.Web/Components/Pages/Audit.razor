@@ -1,6 +1,344 @@
 @page "/audit"
+@using System.Globalization
+@using System.Text.Json
+@using Nullbox.Core.Gmail
+@using Nullbox.Core.Pipeline
+@using Nullbox.Core.Rules
+@inject IDecisionLog Log
+@inject IServiceProvider Services
+@inject ILogger<Audit> Logger
 
 <PageTitle>Audit · nullbox</PageTitle>
 
-<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Audit</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Every decision with its Jev answers, the actions taken or skipped in dry run, and undo where possible. Arrives with M3-17.</MudAlert>
+<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-2">Audit</MudText>
+<MudText Typo="Typo.body2" Class="mb-3">
+    Every verdict, newest first: Jev's answers, the decisions that matched and the actions taken, or that a dry run
+    would have taken. Pick a row for the details, and to undo what a live decision changed.
+</MudText>
+
+<MudPaper Outlined="true" Class="pa-3 mb-3" data-testid="audit-filters">
+    <div class="d-flex flex-wrap gap-3 align-end">
+        <label class="mud-typography-body2">Rule set
+            <input class="d-block" value="@_ruleSet" @onchange="@(e => _ruleSet = (string?)e.Value)" placeholder="promo-cleanup" style="width: 11rem" data-testid="filter-rule-set" />
+        </label>
+        <label class="mud-typography-body2">Version
+            <input class="d-block" type="number" min="1" value="@_version" @onchange="@(e => _version = int.TryParse((string?)e.Value, out var v) ? v : null)" style="width: 5rem" data-testid="filter-version" />
+        </label>
+        <label class="mud-typography-body2">Outcome
+            <select class="d-block" value="@(_outcome?.ToString() ?? string.Empty)" @onchange="@(e => _outcome = Enum.TryParse<DecisionOutcome>((string?)e.Value, out var o) ? o : null)" data-testid="filter-outcome">
+                <option value="">Any</option>
+                @foreach (var outcome in Enum.GetValues<DecisionOutcome>())
+                {
+                    <option value="@outcome">@Name(outcome)</option>
+                }
+            </select>
+        </label>
+        <label class="mud-typography-body2">Mode
+            <select class="d-block" value="@(_mode?.ToString() ?? string.Empty)" @onchange="@(e => _mode = Enum.TryParse<RuleSetMode>((string?)e.Value, out var m) ? m : null)" data-testid="filter-mode">
+                <option value="">Any</option>
+                <option value="@RuleSetMode.DryRun">Dry run</option>
+                <option value="@RuleSetMode.Live">Live</option>
+            </select>
+        </label>
+        <label class="mud-typography-body2">Action starts with
+            <input class="d-block" value="@_action" @onchange="@(e => _action = (string?)e.Value)" placeholder="archive" style="width: 10rem" data-testid="filter-action" />
+        </label>
+        <label class="mud-typography-body2">Message id
+            <input class="d-block" value="@_messageId" @onchange="@(e => _messageId = (string?)e.Value)" style="width: 10rem" data-testid="filter-message" />
+        </label>
+        <label class="mud-typography-body2">Confidence from
+            <input class="d-block" type="number" min="0" max="1" step="0.05" value="@_minConfidence" @onchange="@(e => _minConfidence = Number(e.Value))" style="width: 5rem" data-testid="filter-min-confidence" />
+        </label>
+        <label class="mud-typography-body2">to
+            <input class="d-block" type="number" min="0" max="1" step="0.05" value="@_maxConfidence" @onchange="@(e => _maxConfidence = Number(e.Value))" style="width: 5rem" data-testid="filter-max-confidence" />
+        </label>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SearchAsync" data-testid="filter-apply">Filter</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="ClearAsync" data-testid="filter-clear">Clear</MudButton>
+    </div>
+</MudPaper>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="audit-error">@_error</MudAlert>
+}
+
+<MudGrid Spacing="2">
+    <MudItem xs="12" md="@(_selected is null ? 12 : 7)">
+        @if (_items is null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (_items.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" data-testid="audit-empty">No decisions match.</MudAlert>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true" Outlined="true" data-testid="audit-table">
+                <thead>
+                    <tr>
+                        <th>When (UTC)</th>
+                        <th>Message</th>
+                        <th>Rule set</th>
+                        <th>Outcome</th>
+                        <th>Actions</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _items)
+                    {
+                        <tr @onclick="@(() => Select(item))" style="cursor: pointer; @(item.Id == _selected?.Id ? "background: rgba(25, 118, 210, 0.12)" : null)" data-testid="@($"audit-row-{item.Id}")">
+                            <td>@item.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td><code>@item.MessageId</code></td>
+                            <td>@item.RuleSetKey</td>
+                            <td>
+                                <MudChip T="string" Size="Size.Small" Color="@OutcomeColor(item.Outcome)">@Name(item.Outcome)</MudChip>
+                                @if (item.Mode == RuleSetMode.DryRun && item.Outcome != DecisionOutcome.DryRun)
+                                {
+                                    <span class="mud-typography-caption"> dry run</span>
+                                }
+                            </td>
+                            <td>@(item.Actions.Count == 0 ? "none" : string.Join(", ", item.Actions))</td>
+                            <td>@(item.Confidence is { } c ? c.ToString("0.00", CultureInfo.InvariantCulture) : "–")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            @if (_next is not null)
+            {
+                <MudButton Variant="Variant.Outlined" Class="mt-2" OnClick="MoreAsync" data-testid="audit-more">Load older</MudButton>
+            }
+        }
+    </MudItem>
+
+    @if (_selected is { } record)
+    {
+        <MudItem xs="12" md="5">
+            <MudPaper Outlined="true" Class="pa-3" Style="position: sticky; top: 72px;" data-testid="audit-detail">
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle1">@record.RuleSetKey on <code>@record.MessageId</code></MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => Select(null))" aria-label="Close" data-testid="audit-detail-close" />
+                </MudStack>
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    @Name(record.Outcome) in @(record.Mode == RuleSetMode.Live ? "live" : "dry run") mode,
+                    @record.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) UTC@(string.IsNullOrEmpty(record.Model) ? null : $", model {record.Model}").
+                </MudText>
+                <dl class="mud-typography-body2" data-testid="audit-detail-fields">
+                    <dt><b>Decisions</b></dt><dd>@List(record.Decisions)</dd>
+                    <dt><b>Actions</b></dt><dd data-testid="audit-detail-actions">@List(record.Actions)</dd>
+                    @if (record.Skipped.Count > 0)
+                    {
+                        <dt><b>Held back</b></dt><dd><ul>@foreach (var skipped in record.Skipped) { <li>@skipped</li> }</ul></dd>
+                    }
+                    <dt><b>Labels before</b></dt><dd>@List(record.Labels)</dd>
+                    @if (record.Error is not null)
+                    {
+                        <dt><b>Error</b></dt><dd data-testid="audit-detail-error">@record.Error</dd>
+                    }
+                    @if (record.InputsHash is not null)
+                    {
+                        <dt><b>Inputs hash</b></dt><dd><code style="word-break: break-all">@record.InputsHash</code></dd>
+                    }
+                </dl>
+                <details open>
+                    <summary class="mud-typography-body2">Jev's answers</summary>
+                    <pre class="mud-typography-caption" style="white-space: pre-wrap" data-testid="audit-detail-answers">@Pretty(record.AnswersJson)</pre>
+                </details>
+                @if (record.StateJson is not null)
+                {
+                    <details>
+                        <summary class="mud-typography-body2">State sent to Jev (body cut short)</summary>
+                        <pre class="mud-typography-caption" style="white-space: pre-wrap">@Pretty(record.StateJson)</pre>
+                    </details>
+                }
+
+                <MudDivider Class="my-3" />
+                @if (_undone.TryGetValue(record.Id, out var done))
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" data-testid="undo-done">Undone: @string.Join(", ", done).</MudAlert>
+                }
+                else if (!_undoPlan!.CanUndo)
+                {
+                    <MudText Typo="Typo.caption" data-testid="undo-unavailable">@_undoPlan.Unavailable</MudText>
+                }
+                else if (_confirmUndo)
+                {
+                    <ConfirmBar TestId="confirm-undo" ConfirmLabel="Undo in Gmail" Busy="_busy" OnConfirm="UndoAsync" OnCancel="@(() => _confirmUndo = false)">
+                        This changes the message in Gmail:
+                        <ul>@foreach (var step in _undoPlan.Steps) { <li>@step</li> }</ul>
+                    </ConfirmBar>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Undo" OnClick="@(() => _confirmUndo = true)" data-testid="undo">Undo</MudButton>
+                    <MudText Typo="Typo.caption" Class="d-block mt-1">@string.Join(", ", _undoPlan.Steps).</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private const int PageSize = 50;
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private string? _ruleSet;
+    private int? _version;
+    private DecisionOutcome? _outcome;
+    private RuleSetMode? _mode;
+    private string? _action;
+    private string? _messageId;
+    private double? _minConfidence;
+    private double? _maxConfidence;
+
+    private List<DecisionRecord>? _items;
+    private long? _next;
+    private DecisionRecord? _selected;
+    private UndoPlan? _undoPlan;
+    private bool _confirmUndo;
+    private bool _busy;
+    private string? _error;
+    private readonly Dictionary<long, IReadOnlyList<string>> _undone = [];
+
+    /// <summary>Optional starting filter, e.g. <c>/audit?messageId=…</c> from elsewhere in the app.</summary>
+    [SupplyParameterFromQuery(Name = "messageId")]
+    public string? MessageIdQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "ruleSet")]
+    public string? RuleSetQuery { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _messageId = MessageIdQuery;
+        _ruleSet = RuleSetQuery;
+        await SearchAsync();
+    }
+
+    private DecisionQuery Query(long? before) => new()
+    {
+        RuleSet = Blank(_ruleSet),
+        Version = _version,
+        Outcome = _outcome,
+        Mode = _mode,
+        Action = Blank(_action),
+        MessageId = Blank(_messageId),
+        MinConfidence = _minConfidence,
+        MaxConfidence = _maxConfidence,
+        Before = before,
+        Limit = PageSize,
+    };
+
+    private async Task SearchAsync()
+    {
+        _error = null;
+        try
+        {
+            var page = await Log.QueryAsync(Query(null));
+            _items = [.. page.Items];
+            _next = page.Next;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            _items = [];
+            _next = null;
+            _error = ex.Message;
+        }
+
+        if (_selected is not null && _items.All(i => i.Id != _selected.Id))
+        {
+            Select(null);
+        }
+    }
+
+    private async Task MoreAsync()
+    {
+        var page = await Log.QueryAsync(Query(_next));
+        _items!.AddRange(page.Items);
+        _next = page.Next;
+    }
+
+    private Task ClearAsync()
+    {
+        (_ruleSet, _version, _outcome, _mode, _action, _messageId, _minConfidence, _maxConfidence) = (null, null, null, null, null, null, null, null);
+        return SearchAsync();
+    }
+
+    private void Select(DecisionRecord? record)
+    {
+        _selected = record;
+        _undoPlan = record is null ? null : DecisionUndo.Plan(record);
+        _confirmUndo = false;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (_selected is not { } record || _undoPlan is not { CanUndo: true } plan)
+        {
+            return;
+        }
+
+        if (Services.GetService<IGmailService>() is not { } gmail)
+        {
+            _error = "Gmail isn't set up in this app, so nothing can be undone.";
+            _confirmUndo = false;
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _undone[record.Id] = await DecisionUndo.ApplyAsync(gmail, record, plan);
+            Logger.LogInformation("Undid decision {Id} ({RuleSet}) on message {MessageId}", record.Id, record.RuleSetKey, record.MessageId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _error = $"Undo failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            _confirmUndo = false;
+        }
+    }
+
+    public static string Name(DecisionOutcome outcome) => outcome switch
+    {
+        DecisionOutcome.DryRun => "Dry run",
+        DecisionOutcome.Applied => "Applied",
+        DecisionOutcome.NoChange => "No change",
+        DecisionOutcome.KillSwitch => "Kill switch",
+        DecisionOutcome.CapReached => "Hourly cap",
+        _ => "Error",
+    };
+
+    private static Color OutcomeColor(DecisionOutcome outcome) => outcome switch
+    {
+        DecisionOutcome.Applied => Color.Success,
+        DecisionOutcome.Error => Color.Error,
+        DecisionOutcome.KillSwitch or DecisionOutcome.CapReached => Color.Warning,
+        DecisionOutcome.DryRun => Color.Info,
+        _ => Color.Default,
+    };
+
+    private static string List(IReadOnlyList<string> values) => values.Count == 0 ? "none" : string.Join(", ", values);
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static double? Number(object? value)
+        => double.TryParse(value as string, NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : null;
+
+    private static string Pretty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc.RootElement, Indented);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
+    }
+}
