@@ -102,12 +102,15 @@ the rule sets are skipped for it. Otherwise it goes through every active rule se
 (the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
 in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 
-- the rule set's (or saved rule's) `mode` is `live` (the default in rule-set JSON; the example rule sets, and new rule sets made in the
-  editor, are `dry_run`, which only records what would happen);
+- the rule set's (or saved rule's) `mode` is `live` (the default for rule sets, also for new rule sets made in the
+  editor; the example rule sets, and new saved rules, are `dry_run`, which only records what would happen);
+- the matching rule has been promoted past **Dry run**, which new rules start on;
 - the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
 
-A decision takes mail out of the inbox only through its `remove` switch ([docs/rules.md](docs/rules.md)): `archive`
+Each rule's switch ([docs/rules.md](docs/rules.md)) is Dry run | Keep in inbox | Archive | Delete. `dry_run` records
+the match and changes nothing, and never takes the first match from the rules below it. Mail leaves the inbox only
+through the switch: `archive`
 adds the rule's review label `nullbox/review/<rule-set>/<rule>`, and `delete` moves to Trash only when the delete lock
 is lifted (`Nullbox:Gmail:AllowDelete`). While it is on, a delete archives with the review label and is recorded as
 blocked; when several decisions match, the gentlest removal wins. Starred and important mail is never marked read

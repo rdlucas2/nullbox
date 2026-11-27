@@ -28,7 +28,8 @@ public static class DecisionEngine
 {
     /// <summary>
     /// Matching decisions in priority order (the order they are listed). With <see cref="DecisionMatch.First"/> only
-    /// the first match is returned; with <see cref="DecisionMatch.All"/> every match is. A condition that depends on a
+    /// the first match is returned, plus any dry-run rules that matched before it (they are recorded but don't count as
+    /// the first match); with <see cref="DecisionMatch.All"/> every match is. A condition that depends on a
     /// missing answer never matches (see <see cref="Condition"/>), so missing outputs can't trigger an action.
     /// </summary>
     public static IReadOnlyList<Decision> Evaluate(RuleSetDocument ruleSet, JevResult result)
@@ -51,8 +52,10 @@ public static class DecisionEngine
                 [.. rule.Actions.Select(RuleAction.Parse)],
                 rule.AllowProtected,
                 rule.Remove,
-                rule.Remove is null ? null : ReviewLabels.For(ruleSet.Name, rule, i)));
-            if (ruleSet.Match == DecisionMatch.First)
+                rule.Remove is null or RemoveMode.DryRun ? null : ReviewLabels.For(ruleSet.Name, rule, i)));
+            // A dry-run rule is on trial: it is recorded but never takes the first match, so adding one can't stop the
+            // rules below it from acting.
+            if (ruleSet.Match == DecisionMatch.First && rule.Remove != RemoveMode.DryRun)
             {
                 break;
             }

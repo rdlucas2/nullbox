@@ -87,6 +87,41 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Dry_run_rules_in_a_live_rule_set_record_their_matches_and_change_nothing()
+    {
+        var promo = Promo(RuleSetMode.Live);
+        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Actions.Contains("none") ? d : d with { Remove = RemoveMode.DryRun })] });
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Empty(_gmail.Changes);
+        var record = Assert.Single(await _db.Log().ListAsync("m1"));
+        Assert.Equal((RuleSetMode.Live, DecisionOutcome.NoChange), (record.Mode, record.Outcome));
+        Assert.Equal(["Archive confident promos", "Label likely promos"], record.Decisions);
+        Assert.Empty(record.Actions);
+        Assert.All(record.Skipped, s => Assert.EndsWith("the rule is in dry run; recorded only", s, StringComparison.Ordinal));
+        Assert.Contains("mark_read (Archive confident promos): the rule is in dry run; recorded only", record.Skipped);
+    }
+
+    [Fact]
+    public async Task A_rule_on_trial_does_not_stop_the_rule_below_it_from_acting()
+    {
+        var promo = Promo(RuleSetMode.Live);
+        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Remove == RemoveMode.Archive ? d with { Remove = RemoveMode.DryRun } : d)] });
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Equal(["label:nullbox/promo", "modify:m1:+Label_nullbox/promo:-"], _gmail.Changes);
+        var record = Assert.Single(await _db.Log().ListAsync("m1"));
+        Assert.Equal(DecisionOutcome.Applied, record.Outcome);
+        Assert.Equal(["Archive confident promos", "Label likely promos"], record.Decisions);
+        Assert.Equal(["label:nullbox/promo"], record.Actions);
+        Assert.Contains("mark_read (Archive confident promos): the rule is in dry run; recorded only", record.Skipped);
+    }
+
+    [Fact]
     public async Task A_trash_rule_with_the_delete_lock_off_trashes()
     {
         _gmailOptions.AllowDelete = true;
