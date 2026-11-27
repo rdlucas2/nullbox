@@ -1,11 +1,11 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
+using Nullbox.Tests.Infrastructure;
 using Nullbox.Web;
 
 namespace Nullbox.Tests.Web;
 
-public sealed class HealthProbeTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+[Collection(AppCollection.Name)]
+public sealed class HealthProbeTests(NullboxAppFactory factory)
 {
     [Theory]
     [InlineData(null, 8080)]

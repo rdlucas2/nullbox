@@ -1,15 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Nullbox.Core;
+using Nullbox.Tests.Infrastructure;
 
 namespace Nullbox.Tests.Web;
 
-public sealed class HealthEndpointTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+[Collection(AppCollection.Name)]
+public sealed class HealthEndpointTests(NullboxAppFactory factory)
 {
     [Fact]
-    public async Task Healthz_returns_200_healthy()
+    public async Task Healthz_returns_200_healthy_without_login()
     {
         using var client = factory.CreateClient();
 
