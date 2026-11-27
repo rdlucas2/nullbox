@@ -65,7 +65,7 @@
             <label class="mud-typography-caption d-block">Mode saved with this version</label>
             <select class="mud-input-slot pa-1" value="@_model.Mode" @onchange="@(e => Change(() => _model.Mode = Enum.Parse<RuleSetMode>((string)e.Value!)))" data-testid="mode">
                 <option value="@RuleSetMode.DryRun">Dry run: record decisions only</option>
-                <option value="@RuleSetMode.Live">Live: apply actions to Gmail</option>
+                <option value="@RuleSetMode.Live">Live: apply each rule as its switch says (new rules are dry runs)</option>
             </select>
         </MudItem>
         <MudItem xs="12">
@@ -113,6 +113,9 @@
                 <pre class="mud-typography-body2 pa-2" style="white-space: pre-wrap; overflow-x: auto;" data-testid="request-preview">@(_model.RequestPreview(Time.GetUtcNow()) ?? "Fix the errors below to see the request.")</pre>
             </MudItem>
         </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="Test">
+        <RuleTestPanel Draft="@(_model.Validate().Count == 0 ? _model.ToDocument() : null)" />
     </MudTabPanel>
     <MudTabPanel Text="@($"Versions ({_versions.Count})")">
         <VersionHistory Versions="_versions" OnRestore="Restore" />

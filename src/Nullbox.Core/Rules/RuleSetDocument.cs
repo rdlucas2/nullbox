@@ -20,8 +20,9 @@ public sealed record RuleSetDocument
     public string? Description { get; init; }
 
     /// <summary>
-    /// Live applies decisions; dry run only records them. New rule sets are live: a rule is tried by letting it
-    /// archive (see <see cref="DecisionRule.Remove"/>), not by watching a dry run.
+    /// Live applies decisions; dry run only records them. New rule sets are live, and each rule is tried on its own:
+    /// new rules start as <see cref="RemoveMode.DryRun"/> and are promoted to Archive, then Delete
+    /// (see <see cref="DecisionRule.Remove"/>).
     /// </summary>
     public RuleSetMode Mode { get; init; } = RuleSetMode.Live;
 
@@ -87,7 +88,7 @@ public static class StateFields
 /// <summary>
 /// <c>when</c> is a condition over answers, e.g. <c>category.choice == "promo" &amp;&amp; category.confidence &gt;= 0.8</c>
 /// (see <see cref="ConditionParser"/>); <c>actions</c> are <see cref="RuleAction"/> strings like <c>label:promo</c>;
-/// <c>remove</c> is the Archive | Delete switch.
+/// <c>remove</c> is the Dry run | Archive | Delete switch.
 /// </summary>
 public sealed record DecisionRule
 {
@@ -99,8 +100,9 @@ public sealed record DecisionRule
     public IReadOnlyList<string> Actions { get; init; } = [];
 
     /// <summary>
-    /// Whether matching mail leaves the inbox: <see cref="RemoveMode.Archive"/> (with the review label, the default
-    /// for new rules in the editor) or <see cref="RemoveMode.Delete"/> (Trash). Null leaves it in the inbox.
+    /// What the rule does to matching mail: <see cref="RemoveMode.DryRun"/> (records the match and changes nothing, the
+    /// default for new rules in the editor), <see cref="RemoveMode.Archive"/> (with the review label) or
+    /// <see cref="RemoveMode.Delete"/> (Trash). Null applies the rule's actions and leaves mail in the inbox.
     /// </summary>
     public RemoveMode? Remove { get; init; }
 
@@ -112,7 +114,7 @@ public sealed record DecisionRule
     public bool AllowProtected { get; init; }
 }
 
-/// <summary>The Archive | Delete switch on a decision.</summary>
+/// <summary>The Dry run | Archive | Delete switch on a decision; a rule is promoted in that order.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<RemoveMode>))]
 public enum RemoveMode
 {
@@ -126,4 +128,11 @@ public enum RemoveMode
     /// </summary>
     [JsonStringEnumMemberName("delete")]
     Delete,
+
+    /// <summary>
+    /// Record that the rule matched, and what it would do, without changing Gmail: none of its actions apply, even in
+    /// a live rule set. Its actions show as held back in the audit log.
+    /// </summary>
+    [JsonStringEnumMemberName("dry_run")]
+    DryRun,
 }

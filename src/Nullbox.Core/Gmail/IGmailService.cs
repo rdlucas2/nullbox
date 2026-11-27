@@ -1,10 +1,10 @@
 namespace Nullbox.Core.Gmail;
 
 /// <summary>
-/// Gmail operations used by nullbox (port of emailBlaster's <c>main.py</c>). Every bulk method de-duplicates ids,
-/// does nothing for an empty list and chunks requests at Gmail's 1000-id limit.
+/// The read-only part of <see cref="IGmailService"/>. Code that must never change mail (the rule tester) takes only
+/// this, wrapped in <see cref="GmailReader"/> so it can't be cast back to the full service.
 /// </summary>
-public interface IGmailService
+public interface IGmailReader
 {
     /// <summary>
     /// Returns the ids of messages matching a Gmail search query, following every result page.
@@ -14,7 +14,34 @@ public interface IGmailService
 
     /// <summary>Fetches one message. <see cref="MessageFormat.Metadata"/> skips the body to save quota.</summary>
     Task<GmailMessage> GetMessageAsync(string messageId, MessageFormat format = MessageFormat.Metadata, CancellationToken cancellationToken = default);
+}
 
+/// <summary>
+/// Forwards only the reads of an <see cref="IGmailService"/>, resolved on first use so a missing Gmail token surfaces
+/// as an error from the read rather than when the reader is created.
+/// </summary>
+public sealed class GmailReader(Func<IGmailService> gmail) : IGmailReader
+{
+    private readonly Lazy<IGmailService> _gmail = new(gmail);
+
+    public GmailReader(IGmailService gmail)
+        : this(() => gmail)
+    {
+    }
+
+    public Task<IReadOnlyList<string>> SearchAsync(string query, int? maxResults = null, CancellationToken cancellationToken = default)
+        => _gmail.Value.SearchAsync(query, maxResults, cancellationToken);
+
+    public Task<GmailMessage> GetMessageAsync(string messageId, MessageFormat format = MessageFormat.Metadata, CancellationToken cancellationToken = default)
+        => _gmail.Value.GetMessageAsync(messageId, format, cancellationToken);
+}
+
+/// <summary>
+/// Gmail operations used by nullbox (port of emailBlaster's <c>main.py</c>). Every bulk method de-duplicates ids,
+/// does nothing for an empty list and chunks requests at Gmail's 1000-id limit.
+/// </summary>
+public interface IGmailService : IGmailReader
+{
     /// <summary>Returns the id of the user label with this name, creating it if it does not exist.</summary>
     Task<string> EnsureLabelAsync(string name, CancellationToken cancellationToken = default);
 
