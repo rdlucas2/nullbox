@@ -99,3 +99,30 @@ reached; see the README's "Message pipeline" section.
 Every save that changes the document adds a new immutable version; saving identical content does not. The pipeline
 uses the **active** version, which only changes when a version is activated. Export is the stored JSON; import runs
 the same checks as a save.
+
+## Editing in the UI
+
+`/rules` lists every rule set with its active version, its mode, and how many decisions of that version are set to
+Delete. From there you can make a new rule set, edit, duplicate (saved as `<name>-copy`, not activated), export the
+JSON, delete a rule set with all its versions (its decision log is kept), or import a JSON file or pasted JSON (saved
+as the next version of the rule set it names, not activated).
+
+The editor at `/rules/<name>` (or `/rules/new`) has a tab for each part of the document:
+
+- **State**: which email fields Jev sees, the body length cap, and the state Jev would get for a sample email.
+- **Choices, Scores, Nouls**: add, rename, reorder and remove questions, their options or levels, and instructions.
+  Instructions and criteria are plain text, or JSON when they start with `{` or `[`.
+- **Decisions**: the match mode, then each decision's `when`, actions and `remove` switch. A `when` made of
+  comparisons joined by `&&` shows each comparison, with a slider for confidence, probability and noul thresholds; a
+  clause builder appends new comparisons. Switching a decision to Delete asks first, says matching mail goes to Trash
+  (purged by Gmail after 30 days) and links its review label in Gmail; it also says when the delete lock means it
+  will still archive. Delete rules without a confidence threshold, or with one below 0.8, get a warning.
+- **JSON**: the document as it would be saved, editable. Applying edited JSON updates the other tabs; JSON that
+  fails the checks is not applied. Beside it is the exact request Jev would get for the sample email.
+- **Versions**: every saved version, with a line diff against the one before it, and a button that loads an old
+  version back into the editor (save it to make it the newest version).
+
+Validation errors (schema and references, with their JSON paths) are listed under the tabs and block saving. Saving
+adds a version but doesn't activate it; **Activate** and **Switch to live / dry run** ask for confirmation and are
+disabled while there are unsaved changes. Switching modes saves the active version with the new mode and activates
+that. Leaving the page with unsaved changes asks first. New rule sets made in the editor start as dry runs.

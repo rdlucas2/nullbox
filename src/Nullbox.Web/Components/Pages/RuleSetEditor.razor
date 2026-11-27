@@ -1,0 +1,381 @@
+@page "/rules/new"
+@page "/rules/{Name}"
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Components.Rules
+@using Nullbox.Web.Ui.Rules
+@inject IRuleSetStore Store
+@inject RuleSetCatalog Catalog
+@inject NavigationManager Navigation
+@inject TimeProvider Time
+
+<PageTitle>@(IsNew ? "New rule set" : Name) · nullbox</PageTitle>
+
+<NavigationLock OnBeforeInternalNavigation="OnBeforeNavigation" ConfirmExternalNavigation="@Dirty" />
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h4" Tag="@("h1")">@(IsNew ? "New rule set" : Name)</MudText>
+    @if (Active is { } active)
+    {
+        <MudChip T="string" Color="Color.Success" Size="Size.Small" data-testid="active-version">v@(active.Version) active</MudChip>
+        <MudChip T="string" Color="@(active.Document.Mode == RuleSetMode.Live ? Color.Warning : Color.Default)" Size="Size.Small" data-testid="active-mode">
+            @(active.Document.Mode == RuleSetMode.Live ? "live" : "dry run")
+        </MudChip>
+    }
+    else if (!IsNew && _versions.Count > 0)
+    {
+        <MudChip T="string" Size="Size.Small" data-testid="active-version">not active</MudChip>
+    }
+    <MudSpacer />
+    <MudLink Href="/rules">All rule sets</MudLink>
+</MudStack>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning" data-testid="not-found">There is no rule set named @Name.</MudAlert>
+    return;
+}
+
+@if (_pendingLeave is not null)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="confirm-leave">
+        You have unsaved changes. Leave this page and lose them?
+        <MudStack Row="true" Class="mt-2">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="Leave" data-testid="confirm-leave-yes">Leave without saving</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _pendingLeave = null)" data-testid="confirm-leave-no">Stay</MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4" Outlined="true">
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudTextField T="string" Label="Name" Value="@_model.Name" ValueChanged="@(v => Change(() => _model.Name = v))" Immediate="true"
+                          ReadOnly="@(!IsNew)" HelperText="@(IsNew ? "Lowercase letters, digits and dashes." : "A rule set's name can't change; duplicate it instead.")"
+                          data-testid="name" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudTextField T="string" Label="Jev model" Value="@_model.Model" ValueChanged="@(v => Change(() => _model.Model = v))" Immediate="true" data-testid="model" />
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <label class="mud-typography-caption d-block">Mode saved with this version</label>
+            <select class="mud-input-slot pa-1" value="@_model.Mode" @onchange="@(e => Change(() => _model.Mode = Enum.Parse<RuleSetMode>((string)e.Value!)))" data-testid="mode">
+                <option value="@RuleSetMode.DryRun">Dry run: record decisions only</option>
+                <option value="@RuleSetMode.Live">Live: apply actions to Gmail</option>
+            </select>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" Label="Description" Value="@_model.Description" ValueChanged="@(v => Change(() => _model.Description = v))" Immediate="true" data-testid="description" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTabs Outlined="true" Border="true" KeepPanelsAlive="true" TabPanelsClass="pa-4" Class="mb-4">
+    <MudTabPanel Text="State">
+        <StateEditor Model="_model" Changed="Changed" />
+    </MudTabPanel>
+    <MudTabPanel Text="@($"Choices ({_model.OfKind(QuestionKind.Choice).Count()})")">
+        <QuestionEditor Model="_model" Kind="QuestionKind.Choice" Changed="Changed" />
+    </MudTabPanel>
+    <MudTabPanel Text="@($"Scores ({_model.OfKind(QuestionKind.Score).Count()})")">
+        <QuestionEditor Model="_model" Kind="QuestionKind.Score" Changed="Changed" />
+    </MudTabPanel>
+    <MudTabPanel Text="@($"Nouls ({_model.OfKind(QuestionKind.Noul).Count()})")">
+        <QuestionEditor Model="_model" Kind="QuestionKind.Noul" Changed="Changed" />
+    </MudTabPanel>
+    <MudTabPanel Text="@($"Decisions ({_model.Decisions.Count})")">
+        <DecisionEditor Model="_model" DeletesAllowed="@Catalog.DeletesAllowed" Changed="Changed" />
+    </MudTabPanel>
+    <MudTabPanel Text="JSON">
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Rule set JSON</MudText>
+                <textarea class="mud-typography-body2 pa-2" style="width: 100%; min-height: 28rem; font-family: monospace;" spellcheck="false"
+                          value="@(_jsonPending ?? _model.TryToJson() ?? string.Empty)" @onchange="@(e => _jsonPending = (string?)e.Value)" data-testid="json"></textarea>
+                <MudStack Row="true" Class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_jsonPending is null)" OnClick="ApplyJson" data-testid="apply-json">Apply JSON</MudButton>
+                    <MudButton Variant="Variant.Outlined" Disabled="@(_jsonPending is null)" OnClick="DiscardJson" data-testid="discard-json">Discard JSON edits</MudButton>
+                </MudStack>
+                @if (_jsonErrors.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-2" data-testid="json-errors">
+                        The JSON wasn't applied:
+                        <ul>@foreach (var error in _jsonErrors) { <li>@error</li> }</ul>
+                    </MudAlert>
+                }
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">Request Jev gets for a sample email</MudText>
+                <pre class="mud-typography-body2 pa-2" style="white-space: pre-wrap; overflow-x: auto;" data-testid="request-preview">@(_model.RequestPreview(Time.GetUtcNow()) ?? "Fix the errors below to see the request.")</pre>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+    <MudTabPanel Text="@($"Versions ({_versions.Count})")">
+        <VersionHistory Versions="_versions" OnRestore="Restore" />
+    </MudTabPanel>
+</MudTabs>
+
+@if (Errors.Count > 0)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" data-testid="validation-errors">
+        Fix these before saving:
+        <ul>@foreach (var error in Errors) { <li>@error</li> }</ul>
+    </MudAlert>
+}
+@if (_jsonPending is not null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3" data-testid="json-pending">The JSON tab has edits that aren't applied yet. Apply or discard them before saving.</MudAlert>
+}
+
+@if (_confirm is { } confirm)
+{
+    <MudAlert Severity="@(confirm.Live ? Severity.Warning : Severity.Info)" Class="mb-3" data-testid="confirm-action">
+        @confirm.Question
+        <MudStack Row="true" Class="mt-2">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="@(confirm.Live ? Color.Warning : Color.Primary)" OnClick="ConfirmAsync" data-testid="confirm-action-yes">@confirm.Label</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _confirm = null)" data-testid="confirm-action-no">Cancel</MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!CanSave)" OnClick="SaveAsync" data-testid="save">
+        Save as v@((_versions.Count == 0 ? 0 : _versions.Max(v => v.Version)) + 1)
+    </MudButton>
+    @if (Latest is { } latest)
+    {
+        <MudButton Variant="Variant.Outlined" Disabled="@(Dirty || latest.IsActive)" OnClick="@(() => AskActivate(latest))" data-testid="activate">Activate v@(latest.Version)</MudButton>
+    }
+    @if (Active is { } current)
+    {
+        var target = current.Document.Mode == RuleSetMode.Live ? RuleSetMode.DryRun : RuleSetMode.Live;
+        <MudButton Variant="Variant.Outlined" Color="@(target == RuleSetMode.Live ? Color.Warning : Color.Default)" Disabled="@Dirty" OnClick="@(() => AskMode(target))" data-testid="set-mode">
+            @(target == RuleSetMode.Live ? "Switch to live" : "Switch to dry run")
+        </MudButton>
+    }
+    @if (Latest is { } exported)
+    {
+        <MudLink Href="@($"/api/rule-sets/{Uri.EscapeDataString(exported.Name)}/export?version={exported.Version}")" Target="_self" data-testid="export">Export v@(exported.Version)</MudLink>
+    }
+    @if (Dirty)
+    {
+        <MudText Typo="Typo.caption" data-testid="unsaved">Unsaved changes</MudText>
+    }
+</MudStack>
+
+@code {
+    [Parameter]
+    public string? Name { get; set; }
+
+    private bool IsNew => Name is null;
+
+    private RuleSetEditorModel _model = new();
+    private IReadOnlyList<RuleSetVersion> _versions = [];
+    private string? _baseline;
+    private string? _jsonPending;
+    private IReadOnlyList<RuleSetError> _jsonErrors = [];
+    private IReadOnlyList<RuleSetError> _saveErrors = [];
+    private string? _message;
+    private string? _pendingLeave;
+    private bool _leaving;
+    private bool _notFound;
+    private PendingAction? _confirm;
+
+    private sealed record PendingAction(string Question, string Label, bool Live, Func<Task> Run);
+
+    private RuleSetVersion? Latest => _versions.Count == 0 ? null : _versions.MaxBy(v => v.Version);
+
+    private RuleSetVersion? Active => _versions.FirstOrDefault(v => v.IsActive);
+
+    private IReadOnlyList<RuleSetError> Errors => _saveErrors.Count > 0 ? _saveErrors : _model.Validate();
+
+    private bool Dirty => _jsonPending is not null || _model.TryToJson() != _baseline;
+
+    private bool CanSave => Dirty && _jsonPending is null && Errors.Count == 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _notFound = false;
+        _message = null;
+        _jsonPending = null;
+        _jsonErrors = [];
+        _saveErrors = [];
+        _confirm = null;
+        if (IsNew)
+        {
+            _model = new RuleSetEditorModel();
+            _versions = [];
+            _baseline = _model.TryToJson();
+            return;
+        }
+
+        await ReloadAsync();
+        if (Latest is { } latest)
+        {
+            _model = RuleSetEditorModel.FromDocument(latest.Document);
+            _baseline = _model.TryToJson();
+        }
+        else
+        {
+            _notFound = true;
+        }
+    }
+
+    private async Task ReloadAsync() => _versions = await Store.ListVersionsAsync(Name!);
+
+    private void Change(Action change)
+    {
+        change();
+        Changed();
+    }
+
+    private void Changed()
+    {
+        _saveErrors = [];
+        _message = null;
+    }
+
+    private void ApplyJson()
+    {
+        if (_jsonPending is null)
+        {
+            return;
+        }
+
+        if (!IsNew && TryReadName(_jsonPending) is { } name && name != Name)
+        {
+            _jsonErrors = [new RuleSetError("/name", $"This rule set is {Name}; duplicate it to use another name.")];
+            return;
+        }
+
+        if (_model.TryLoadJson(_jsonPending, out var errors))
+        {
+            _jsonPending = null;
+            _jsonErrors = [];
+            Changed();
+        }
+        else
+        {
+            _jsonErrors = errors;
+        }
+    }
+
+    private static string? TryReadName(string json)
+    {
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(json)?["name"]?.GetValue<string>();
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    private void DiscardJson()
+    {
+        _jsonPending = null;
+        _jsonErrors = [];
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave)
+        {
+            return;
+        }
+
+        try
+        {
+            var saved = await Store.SaveAsync(_model.ToDocument());
+            _baseline = _model.TryToJson();
+            if (IsNew)
+            {
+                Navigation.NavigateTo($"/rules/{Uri.EscapeDataString(saved.Name)}");
+                return;
+            }
+
+            await ReloadAsync();
+            _message = $"Saved v{saved.Version}." + (saved.IsActive ? string.Empty : " It isn't active until you activate it.");
+        }
+        catch (RuleSetValidationException ex)
+        {
+            _saveErrors = ex.Errors;
+        }
+    }
+
+    private void Restore(RuleSetVersion version)
+    {
+        _model = RuleSetEditorModel.FromDocument(version.Document);
+        _jsonPending = null;
+        _jsonErrors = [];
+        Changed();
+        _message = $"Loaded v{version.Version} into the editor. Save it to make it the newest version.";
+    }
+
+    private void AskActivate(RuleSetVersion version)
+    {
+        var live = version.Document.Mode == RuleSetMode.Live;
+        _confirm = new PendingAction(
+            $"Activate v{version.Version}? New mail will be handled by it {(live ? "live, so its actions are applied to Gmail" : "as a dry run, so decisions are only recorded")}.",
+            $"Activate v{version.Version}",
+            live,
+            async () =>
+            {
+                await Store.ActivateAsync(version.Name, version.Version);
+                await ReloadAsync();
+                _message = $"v{version.Version} is active.";
+            });
+    }
+
+    private void AskMode(RuleSetMode mode)
+    {
+        var live = mode == RuleSetMode.Live;
+        _confirm = new PendingAction(
+            live
+                ? $"Switch {Name} to live? Its decisions will change mail in Gmail (labels, archive{(Catalog.DeletesAllowed ? ", Trash" : string.Empty)})."
+                : $"Switch {Name} to dry run? Decisions will only be recorded.",
+            live ? "Switch to live" : "Switch to dry run",
+            live,
+            async () =>
+            {
+                var saved = await Catalog.SetModeAsync(Name!, mode);
+                await ReloadAsync();
+                _model = RuleSetEditorModel.FromDocument(saved.Document);
+                _baseline = _model.TryToJson();
+                _message = $"Saved and activated v{saved.Version} in {(live ? "live" : "dry-run")} mode.";
+            });
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_confirm is { } confirm)
+        {
+            _confirm = null;
+            await confirm.Run();
+        }
+    }
+
+    private void OnBeforeNavigation(LocationChangingContext context)
+    {
+        if (Dirty && !_leaving)
+        {
+            context.PreventNavigation();
+            _pendingLeave = context.TargetLocation;
+        }
+    }
+
+    private void Leave()
+    {
+        if (_pendingLeave is { } target)
+        {
+            _leaving = true;
+            _pendingLeave = null;
+            Navigation.NavigateTo(target);
+        }
+    }
+}

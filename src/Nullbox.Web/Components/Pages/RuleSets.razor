@@ -1,6 +1,185 @@
 @page "/rules"
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Ui.Rules
+@inject IRuleSetStore Store
+@inject RuleSetCatalog Catalog
+@inject NavigationManager Navigation
 
 <PageTitle>Rule sets · nullbox</PageTitle>
 
-<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Rule sets</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Build and version the Jev rule sets: questions (choices, scores, nouls) and the decisions that act on their answers. The editor arrives with M3-15; rule sets are already stored and versioned.</MudAlert>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h4" Tag="@("h1")">Rule sets</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FileUpload" OnClick="@(() => _importing = !_importing)" data-testid="import-toggle">Import</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Href="/rules/new" data-testid="new">New rule set</MudButton>
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mb-3">
+    Each rule set asks Jev questions about new mail (choices, scores, nouls) and its decisions act on the answers.
+    Every save makes a new version; only the active version handles mail.
+    @(Catalog.DeletesAllowed ? "The delete lock is off, so Delete rules in live rule sets move mail to Trash." : "The delete lock is on, so Delete rules archive instead.")
+</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+@if (_importing)
+{
+    <MudPaper Class="pa-4 mb-4" Outlined="true" data-testid="import">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Import a rule set</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">Paste rule-set JSON or pick a file. It's saved as the next version of the rule set it names, and isn't activated.</MudText>
+        <InputFile OnChange="ReadFileAsync" accept=".json,application/json" data-testid="import-file" />
+        <textarea class="mud-typography-body2 pa-2 mt-2" style="width: 100%; min-height: 12rem; font-family: monospace;" spellcheck="false"
+                  value="@_importJson" @onchange="@(e => _importJson = (string?)e.Value ?? string.Empty)" data-testid="import-json"></textarea>
+        @if (_importErrors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2" data-testid="import-errors">
+                Not imported:
+                <ul>@foreach (var error in _importErrors) { <li>@error</li> }</ul>
+            </MudAlert>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" Disabled="@string.IsNullOrWhiteSpace(_importJson)" OnClick="ImportAsync" data-testid="import-save">Import</MudButton>
+    </MudPaper>
+}
+
+@if (_pendingDelete is { } doomed)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="confirm-remove">
+        Delete the rule set @doomed and all its versions? Mail it already handled stays as it is, and its decision log is kept.
+        <MudStack Row="true" Class="mt-2">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="DeleteAsync" data-testid="confirm-remove-yes">Delete @doomed</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _pendingDelete = null)" data-testid="confirm-remove-no">Keep it</MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@if (_rows is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_rows.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" data-testid="empty">No rule sets yet. Make one, or import a JSON file.</MudAlert>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" data-testid="rule-sets">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Active version</th>
+                <th>Mode</th>
+                <th>Delete rules</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                var summary = row.Summary;
+                <tr data-testid="@($"row-{summary.Name}")">
+                    <td>
+                        <MudLink Href="@($"/rules/{Uri.EscapeDataString(summary.Name)}")">@summary.Name</MudLink>
+                        @if (!string.IsNullOrWhiteSpace(summary.Description))
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">@summary.Description</MudText>
+                        }
+                    </td>
+                    <td data-testid="active">@(summary.ActiveVersion is { } v ? $"v{v} of {summary.LatestVersion}" : $"none ({summary.LatestVersion} saved)")</td>
+                    <td>
+                        @if (summary.ActiveMode is { } mode)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(mode == RuleSetMode.Live ? Color.Warning : Color.Default)" data-testid="mode">@(mode == RuleSetMode.Live ? "live" : "dry run")</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" data-testid="mode">inactive</MudChip>
+                        }
+                    </td>
+                    <td data-testid="deletes">
+                        @if (row.DeleteRules > 0)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.DeleteForever">@row.DeleteRules in v@(row.ShownVersion)</MudChip>
+                        }
+                        else
+                        {
+                            <span>none</span>
+                        }
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <MudButton Size="Size.Small" Href="@($"/rules/{Uri.EscapeDataString(summary.Name)}")">Edit</MudButton>
+                        <MudButton Size="Size.Small" OnClick="@(() => DuplicateAsync(summary.Name))" data-testid="@($"duplicate-{summary.Name}")">Duplicate</MudButton>
+                        <MudButton Size="Size.Small" Href="@($"/api/rule-sets/{Uri.EscapeDataString(summary.Name)}/export?version={row.ShownVersion}")" Target="_self" data-testid="@($"export-{summary.Name}")">Export</MudButton>
+                        <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => _pendingDelete = summary.Name)" data-testid="@($"remove-{summary.Name}")">Delete</MudButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    private const long MaxImportBytes = 512 * 1024;
+
+    private IReadOnlyList<RuleSetRow>? _rows;
+    private string? _message;
+    private string? _pendingDelete;
+    private bool _importing;
+    private string _importJson = string.Empty;
+    private IReadOnlyList<string> _importErrors = [];
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync() => _rows = await Catalog.ListAsync();
+
+    private async Task DuplicateAsync(string name)
+    {
+        var copy = await Catalog.DuplicateAsync(name);
+        _message = $"Saved {copy.Name} as a copy of {name}. It isn't active.";
+        await ReloadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_pendingDelete is { } name)
+        {
+            _pendingDelete = null;
+            _message = await Store.DeleteAsync(name) ? $"Deleted {name}." : $"{name} was already gone.";
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ReadFileAsync(InputFileChangeEventArgs e)
+    {
+        _importErrors = [];
+        try
+        {
+            await using var stream = e.File.OpenReadStream(MaxImportBytes);
+            using var reader = new StreamReader(stream);
+            _importJson = await reader.ReadToEndAsync();
+        }
+        catch (IOException ex)
+        {
+            _importErrors = [$"Couldn't read {e.File.Name}: {ex.Message}"];
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        try
+        {
+            var saved = await Store.ImportAsync(_importJson);
+            _message = $"Imported {saved.Name} as v{saved.Version}. It isn't active until you activate it.";
+            _importJson = string.Empty;
+            _importErrors = [];
+            _importing = false;
+            await ReloadAsync();
+        }
+        catch (RuleSetValidationException ex)
+        {
+            _importErrors = [.. ex.Errors.Select(error => error.ToString())];
+        }
+    }
+}

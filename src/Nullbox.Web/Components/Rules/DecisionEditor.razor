@@ -1,0 +1,252 @@
+@using System.Globalization
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Ui.Rules
+
+<MudStack Spacing="3">
+    <MudStack Row="true" AlignItems="AlignItems.Center">
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Decisions run in order. A rule's switch decides whether matching mail stays in the inbox, is archived with the
+            rule's review label, or is deleted (moved to Trash).
+        </MudText>
+        <MudSpacer />
+        <label class="mud-typography-body2">
+            Match
+            <select value="@(Model.Match == DecisionMatch.First ? "first" : "all")" @onchange="SetMatchAsync" data-testid="match">
+                <option value="first">first matching decision</option>
+                <option value="all">every matching decision</option>
+            </select>
+        </label>
+    </MudStack>
+
+    @if (Model.Decisions.Count == 0)
+    {
+        <MudText Typo="Typo.body2" data-testid="no-decisions">No decisions yet.</MudText>
+    }
+
+    @for (var di = 0; di < Model.Decisions.Count; di++)
+    {
+        var decision = Model.Decisions[di];
+        var index = di;
+        var hasClauses = DecisionConditions.TryClauses(decision.When, out var clauses);
+        var builder = Builder(decision);
+        <MudPaper Outlined="true" Class="pa-3" data-testid="@($"decision-{index}")">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.subtitle2">@(index + 1).</MudText>
+                <MudTextField T="string" Label="Name" Value="@decision.Name" ValueChanged="@(v => SetAsync(() => decision.Name = v))" Class="flex-grow-1" data-testid="decision-name" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" aria-label="Move decision up" Disabled="@(index == 0)" OnClick="@(() => SetAsync(() => RuleSetEditorModel.Move(Model.Decisions, index, -1)))" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" aria-label="Move decision down" Disabled="@(index == Model.Decisions.Count - 1)" OnClick="@(() => SetAsync(() => RuleSetEditorModel.Move(Model.Decisions, index, 1)))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="Remove decision" Color="Color.Error" OnClick="@(() => SetAsync(() => { Model.Decisions.Remove(decision); }))" data-testid="remove-decision" />
+            </MudStack>
+
+            <MudTextField T="string" Label="When" Value="@decision.When" ValueChanged="@(v => SetAsync(() => decision.When = v))"
+                          HelperText="e.g. category.choice == &quot;promo&quot; && category.confidence >= 0.85" data-testid="decision-when" />
+
+            @if (hasClauses)
+            {
+                @for (var ci = 0; ci < clauses.Count; ci++)
+                {
+                    var clause = clauses[ci];
+                    var clauseIndex = ci;
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="ml-4" data-testid="clause">
+                        <MudText Typo="Typo.body2" Style="min-width: 18rem"><code>@clause</code></MudText>
+                        @if (DecisionConditions.IsThreshold(clause))
+                        {
+                            <input type="range" min="0" max="1" step="0.01" value="@(((double)clause.Value).ToString(CultureInfo.InvariantCulture))"
+                                   aria-label="@($"Threshold for {clause.Path}")" data-testid="threshold"
+                                   @onchange="@(e => SetThresholdAsync(decision, clauseIndex, e.Value))" style="flex-grow: 1" />
+                        }
+                    </MudStack>
+                }
+            }
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="ml-4 mt-1" data-testid="clause-builder">
+                <select @bind="builder.Question" aria-label="Question" data-testid="clause-question">
+                    <option value="">question…</option>
+                    @foreach (var q in Model.Questions.Where(q => q.Name.Trim().Length > 0))
+                    {
+                        <option value="@q.Name.Trim()">@q.Name.Trim()</option>
+                    }
+                </select>
+                <select @bind="builder.Field" aria-label="Field" data-testid="clause-field">
+                    <option value="">field…</option>
+                    @if (Model.Questions.FirstOrDefault(q => q.Name.Trim() == builder.Question) is { } picked)
+                    {
+                        @foreach (var f in DecisionConditions.FieldsFor(picked))
+                        {
+                            <option value="@f">@f</option>
+                        }
+                    }
+                </select>
+                <select @bind="builder.Operator" aria-label="Operator" data-testid="clause-operator">
+                    @foreach (var (symbol, _) in DecisionConditions.Operators)
+                    {
+                        <option value="@symbol">@symbol</option>
+                    }
+                </select>
+                <input @bind="builder.Value" aria-label="Value" placeholder="value" data-testid="clause-value" style="width: 8rem" />
+                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => AddClauseAsync(decision, builder))" data-testid="add-clause">Add condition</MudButton>
+            </MudStack>
+
+            <MudTextField T="string" Label="Actions" Value="@string.Join(", ", decision.Actions)" ValueChanged="@(v => SetActionsAsync(decision, v))"
+                          HelperText="Comma-separated: label:<name>, mark_read, star, none" data-testid="decision-actions" Class="mt-2" />
+            @foreach (var problem in ActionProblems(decision))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error">@problem</MudText>
+            }
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
+                <MudText Typo="Typo.body2">Matching mail:</MudText>
+                <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small" data-testid="remove-switch">
+                    <MudButton Color="@(decision.Remove is null ? Color.Primary : Color.Default)" OnClick="@(() => SetAsync(() => decision.Remove = null))" data-testid="remove-keep">Keep in inbox</MudButton>
+                    <MudButton Color="@(decision.Remove == RemoveMode.Archive ? Color.Primary : Color.Default)" OnClick="@(() => SetAsync(() => decision.Remove = RemoveMode.Archive))" data-testid="remove-archive">Archive</MudButton>
+                    <MudButton Color="@(decision.Remove == RemoveMode.Delete ? Color.Error : Color.Default)" OnClick="@(() => AskDelete(decision))" data-testid="remove-delete">Delete</MudButton>
+                </MudButtonGroup>
+                <span data-testid="remove-state" class="mud-typography-caption">@(decision.Remove switch { null => "keeps in inbox", RemoveMode.Archive => "archives", _ => "deletes" })</span>
+                <MudSpacer />
+                <MudCheckBox T="bool" Value="@decision.AllowProtected" ValueChanged="@(v => SetAsync(() => decision.AllowProtected = v))"
+                             Label="Also starred and important mail" Dense="true" data-testid="allow-protected" />
+            </MudStack>
+            @if (decision.Remove is not null)
+            {
+                <MudText Typo="Typo.caption">Review label: <code>@Model.ReviewLabel(decision)</code></MudText>
+            }
+
+            @if (ReferenceEquals(_pendingDelete, decision))
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="confirm-delete">
+                    <MudText Typo="Typo.body2">
+                        Switch "@(string.IsNullOrWhiteSpace(decision.Name) ? $"rule {index + 1}" : decision.Name)" to Delete? Matching mail goes to Trash, and Gmail
+                        purges Trash after 30 days. Check what it archived first under its review label
+                        <a href="@GmailLabelLink(Model.ReviewLabel(decision))" target="_blank" rel="noopener">@Model.ReviewLabel(decision)</a>.
+                    </MudText>
+                    @if (!DeletesAllowed)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-1" data-testid="delete-lock-note">
+                            The delete lock is on (Nullbox:Gmail:AllowDelete), so this rule will still archive until it is lifted.
+                        </MudText>
+                    }
+                    <MudStack Row="true" Class="mt-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="@(() => ConfirmDeleteAsync(decision))" data-testid="confirm-delete-yes">Switch to Delete</MudButton>
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CancelDelete" data-testid="confirm-delete-no">Cancel</MudButton>
+                    </MudStack>
+                </MudAlert>
+            }
+
+            @if (DecisionConditions.DeleteWarning(decision) is { } warning)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2" data-testid="delete-warning">@warning</MudAlert>
+            }
+        </MudPaper>
+    }
+
+    <div>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => SetAsync(() => { Model.AddDecision(); }))" data-testid="add-decision">Add decision</MudButton>
+    </div>
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public RuleSetEditorModel Model { get; set; } = null!;
+
+    /// <summary>Whether the app-wide delete lock is lifted.</summary>
+    [Parameter]
+    public bool DeletesAllowed { get; set; }
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private readonly Dictionary<DecisionDraft, ClauseBuilder> _builders = [];
+    private DecisionDraft? _pendingDelete;
+
+    /// <summary>The "add condition" row's inputs for one decision.</summary>
+    private sealed class ClauseBuilder
+    {
+        public string Question { get; set; } = string.Empty;
+
+        public string Field { get; set; } = string.Empty;
+
+        public string Operator { get; set; } = "==";
+
+        public string Value { get; set; } = string.Empty;
+    }
+
+    private ClauseBuilder Builder(DecisionDraft decision)
+    {
+        if (!_builders.TryGetValue(decision, out var builder))
+        {
+            builder = new ClauseBuilder();
+            _builders[decision] = builder;
+        }
+
+        return builder;
+    }
+
+    public static string GmailLabelLink(string label) => "https://mail.google.com/mail/u/0/#label/" + Uri.EscapeDataString(label);
+
+    private async Task SetAsync(Action change)
+    {
+        change();
+        await Changed.InvokeAsync();
+    }
+
+    private async Task SetAsync(Func<bool> change)
+    {
+        change();
+        await Changed.InvokeAsync();
+    }
+
+    private Task SetMatchAsync(ChangeEventArgs e)
+        => SetAsync(() => Model.Match = e.Value as string == "all" ? DecisionMatch.All : DecisionMatch.First);
+
+    private Task SetActionsAsync(DecisionDraft decision, string text)
+        => SetAsync(() =>
+        {
+            decision.Actions.Clear();
+            decision.Actions.AddRange((text ?? string.Empty).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+        });
+
+    private static IEnumerable<string> ActionProblems(DecisionDraft decision)
+    {
+        foreach (var action in decision.Actions)
+        {
+            if (!RuleAction.TryParse(action, out _, out var error))
+            {
+                yield return error ?? $"Unknown action '{action}'.";
+            }
+        }
+    }
+
+    private Task SetThresholdAsync(DecisionDraft decision, int clause, object? value)
+        => double.TryParse(value as string, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            ? SetAsync(() => decision.When = DecisionConditions.WithValue(decision.When, clause, number))
+            : Task.CompletedTask;
+
+    private Task AddClauseAsync(DecisionDraft decision, ClauseBuilder builder)
+    {
+        if (builder.Question.Length == 0 || builder.Field.Length == 0 || builder.Value.Trim().Length == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        var clause = DecisionConditions.Clause(builder.Question, builder.Field, builder.Operator.Length > 0 ? builder.Operator : "==", builder.Value);
+        builder.Value = string.Empty;
+        return SetAsync(() => decision.When = DecisionConditions.Append(decision.When, clause));
+    }
+
+    private void AskDelete(DecisionDraft decision)
+    {
+        if (decision.Remove != RemoveMode.Delete)
+        {
+            _pendingDelete = decision;
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(DecisionDraft decision)
+    {
+        _pendingDelete = null;
+        decision.Remove = RemoveMode.Delete;
+        await Changed.InvokeAsync();
+    }
+
+    private void CancelDelete() => _pendingDelete = null;
+}

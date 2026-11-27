@@ -1,0 +1,103 @@
+@using Nullbox.Web.Ui.Rules
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.body2" Color="Color.Secondary">@Help</MudText>
+    @{
+        var questions = Model.OfKind(Kind).ToList();
+    }
+    @if (questions.Count == 0)
+    {
+        <MudText Typo="Typo.body2" data-testid="no-questions">No @Plural yet.</MudText>
+    }
+    @for (var qi = 0; qi < questions.Count; qi++)
+    {
+        var question = questions[qi];
+        var index = qi;
+        <MudPaper Outlined="true" Class="pa-3" data-testid="@($"question-{question.Name}")">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudTextField T="string" Label="Name" Value="@question.Name" ValueChanged="@(v => SetAsync(() => question.Name = v))"
+                              HelperText="Used in conditions, e.g. name.choice" data-testid="question-name" Class="flex-grow-1" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" aria-label="Move up" Disabled="@(index == 0)" OnClick="@(() => MoveAsync(question, -1))" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" aria-label="Move down" Disabled="@(index == questions.Count - 1)" OnClick="@(() => MoveAsync(question, 1))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" aria-label="Remove question" Color="Color.Error" OnClick="@(() => RemoveAsync(question))" data-testid="remove-question" />
+            </MudStack>
+            <MudTextField T="string" Label="Instructions" Value="@question.Instructions" ValueChanged="@(v => SetAsync(() => question.Instructions = v))"
+                          Lines="2" Sizing="InputSizing.Auto" HelperText="Plain text, or JSON starting with { or [" data-testid="question-instructions" />
+
+            @if (Kind == QuestionKind.Noul)
+            {
+                <MudTextField T="string" Label="True when (optional)" Value="@question.TrueCriteria" ValueChanged="@(v => SetAsync(() => question.TrueCriteria = v))" data-testid="noul-true" />
+                <MudTextField T="string" Label="False when (optional)" Value="@question.FalseCriteria" ValueChanged="@(v => SetAsync(() => question.FalseCriteria = v))" data-testid="noul-false" />
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-3">@(Kind == QuestionKind.Choice ? "Options" : "Levels, lowest first")</MudText>
+                @for (var oi = 0; oi < question.Options.Count; oi++)
+                {
+                    var option = question.Options[oi];
+                    var optionIndex = oi;
+                    <MudStack Row="true" AlignItems="AlignItems.Center" data-testid="option">
+                        @if (Kind == QuestionKind.Choice)
+                        {
+                            <MudTextField T="string" Label="Option" Value="@option.Name" ValueChanged="@(v => SetAsync(() => option.Name = v))" Style="max-width: 14rem" data-testid="option-name" />
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Style="min-width: 4rem">Level @(optionIndex + 1)</MudText>
+                        }
+                        <MudTextField T="string" Label="Description" Value="@option.Description" ValueChanged="@(v => SetAsync(() => option.Description = v))" Class="flex-grow-1" data-testid="option-description" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" aria-label="Move option up" Size="Size.Small" Disabled="@(optionIndex == 0)" OnClick="@(() => SetAsync(() => RuleSetEditorModel.Move(question.Options, optionIndex, -1)))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" aria-label="Move option down" Size="Size.Small" Disabled="@(optionIndex == question.Options.Count - 1)" OnClick="@(() => SetAsync(() => RuleSetEditorModel.Move(question.Options, optionIndex, 1)))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" aria-label="Remove option" Size="Size.Small" OnClick="@(() => SetAsync(() => question.Options.RemoveAt(optionIndex)))" data-testid="remove-option" />
+                    </MudStack>
+                }
+                <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => SetAsync(() => question.Options.Add(new OptionDraft())))" data-testid="add-option">
+                    @(Kind == QuestionKind.Choice ? "Add option" : "Add level")
+                </MudButton>
+            }
+        </MudPaper>
+    }
+    <div>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddAsync" data-testid="@($"add-{Kind.ToString().ToLowerInvariant()}")">Add @Singular</MudButton>
+    </div>
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public RuleSetEditorModel Model { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public QuestionKind Kind { get; set; }
+
+    [Parameter]
+    public EventCallback Changed { get; set; }
+
+    private string Singular => Kind switch { QuestionKind.Choice => "choice", QuestionKind.Score => "score", _ => "noul" };
+
+    private string Plural => Kind switch { QuestionKind.Choice => "choices", QuestionKind.Score => "scores", _ => "nouls" };
+
+    private string Help => Kind switch
+    {
+        QuestionKind.Choice => "Jev picks one option. Conditions read name.choice, name.confidence and name.probabilities.<option>.",
+        QuestionKind.Score => "Jev rates on ordered levels. Conditions read name.score and name.confidence.",
+        _ => "A yes/no statement; Jev answers the probability it is true. Conditions read name.noul (0 to 1).",
+    };
+
+    private async Task SetAsync(Action change)
+    {
+        change();
+        await Changed.InvokeAsync();
+    }
+
+    private async Task SetAsync(Func<bool> change)
+    {
+        change();
+        await Changed.InvokeAsync();
+    }
+
+    private Task AddAsync() => SetAsync(() => { Model.AddQuestion(Kind); });
+
+    private Task RemoveAsync(QuestionDraft question) => SetAsync(() => { Model.Questions.Remove(question); });
+
+    private Task MoveAsync(QuestionDraft question, int delta) => SetAsync(() => Model.MoveQuestion(question, delta));
+}
