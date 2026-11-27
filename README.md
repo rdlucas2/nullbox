@@ -70,6 +70,7 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Audit:StoredBodyChars` | `280` | How much of the body sent to Jev a record keeps; `0` keeps none. Full bodies are never stored. |
 | `Nullbox:Gmail:AllowDelete` | `false` | The app-wide **delete lock**. While false, nothing is moved to Trash or deleted, whatever a rule or job says; rules archive instead. The dashboard shows "Deletes locked". |
 | `Nullbox:Gmail:AllowPermanentDelete` | `false` | Permanent delete (bulk jobs only, never rules). Also needs `AllowDelete`. |
+| `Nullbox:Gmail:AllowFilterSync` | `false` | Lets the filter sync create labels and Gmail filters (dry runs work without it). Needs `token_filters.json`. |
 
 ## Jobs and dashboard
 
@@ -166,6 +167,26 @@ Signed in as admin:
 
 Differences from cleanup.py: the "type yes" prompt is the explicit `dryRun=false`; the default label uses the UTC date;
 a rule with both `mark_read` and `archive` off makes no Gmail call (cleanup.py sends an empty modify).
+
+## Filters and bulk jobs
+
+Ports of emailBlaster's `create_filters.py`, `batch_archive.py`, `one_thousand_batch.py` and `main.py
+--archive-all-mail / --mark-read`, as Hangfire jobs. Every one is a **dry run unless `dryRun=false`** is passed, and
+applying is refused while the pipeline kill switch is on. Signed in as admin, each `POST` (with an antiforgery token)
+answers 202 with the job id and its Hangfire page, where the result is shown:
+
+| Endpoint | What it does |
+|---|---|
+| `POST /bulk/archive?query=in:inbox&label=` | Removes INBOX from every match and adds the label (default `archive_<yyyyMMdd_HHmmss>`, UTC). |
+| `POST /bulk/mark-read` | Marks every unread message read (all mail, as main.py does). |
+| `POST /bulk/delete?query=label:old&cap=1500` | **Permanently** deletes at most `cap` matches. Refused unless both `AllowDelete` and `AllowPermanentDelete` are on; a dry run counts. Needs a query. |
+| `GET /gmail/filters` | The rules in `{data}/filters.json` (emailBlaster's file, copied in as it is). |
+| `POST /gmail/filters/sync` | One Gmail filter per rule: label matching new mail and skip the inbox (`mark_read` also marks it read). Missing labels are created; existing filters are skipped, so it is safe to run again. Applying needs `AllowFilterSync`. |
+
+The filter sync uses the separate filters token (`token_filters.json`, `gmail.settings.basic` + `gmail.labels`) that
+emailBlaster's `create_filters.py` writes; the mail token is left alone. Differences from the scripts: confirmation
+prompts are the explicit `dryRun=false`; labels use UTC timestamps; an archive with no matches creates no label;
+batch_archive.py's 1000-per-run stop is gone (use a narrower query), and one_thousand_batch.py's delete is the `cap`.
 
 ## Run in Docker
 

@@ -112,6 +112,12 @@ public sealed class GmailOptions
     /// <summary>Permanent delete is off by default and also needs <see cref="AllowDelete"/>; trash is the recoverable alternative.</summary>
     public bool AllowPermanentDelete { get; set; }
 
+    /// <summary>
+    /// Lets the filter sync create labels and Gmail filters (they change how new mail is filed). Off by default; dry
+    /// runs work without it. Also needs the filters token, <c>token_filters.json</c>.
+    /// </summary>
+    public bool AllowFilterSync { get; set; }
+
     /// <summary>Body text is cut to this many characters (bodies are never logged).</summary>
     public int BodyMaxChars { get; set; } = 4000;
 

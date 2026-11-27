@@ -34,7 +34,8 @@ public sealed class FakeInboxGmail : IGmailService
     public Task<IReadOnlyList<string>> SearchAsync(string query, int? maxResults = null, CancellationToken cancellationToken = default)
     {
         Calls.Add($"search:{query}");
-        return Task.FromResult(Search?.Invoke(query) ?? [.. InboxSearchResults]);
+        var ids = Search?.Invoke(query) ?? [.. InboxSearchResults];
+        return Task.FromResult<IReadOnlyList<string>>(maxResults is { } max ? [.. ids.Take(max)] : ids);
     }
 
     /// <summary>Messages <see cref="GetMessageAsync"/> returns; unknown ids throw <see cref="KeyNotFoundException"/>.</summary>
@@ -90,8 +91,19 @@ public sealed class FakeInboxGmail : IGmailService
         return Task.CompletedTask;
     }
 
+    /// <summary>Off by default, so anything that tries to delete permanently fails loudly.</summary>
+    public bool AllowPermanentDelete { get; set; }
+
     public Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
-        => throw new InvalidOperationException("The pipeline must never delete permanently.");
+    {
+        if (!AllowPermanentDelete)
+        {
+            throw new InvalidOperationException("The pipeline must never delete permanently.");
+        }
+
+        Changes.Enqueue($"delete:{string.Join(",", messageIds)}");
+        return Task.CompletedTask;
+    }
 
     /// <summary>A message with the given labels (INBOX and UNREAD by default).</summary>
     public GmailMessage Add(string id, params string[] labels)
