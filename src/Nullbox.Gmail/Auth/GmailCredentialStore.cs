@@ -86,7 +86,9 @@ public sealed class GmailCredentialStore : IGmailCredentialStore
             if (_entries.TryGetValue(kind, out var entry))
             {
                 entry.State = GmailAuthState.ReauthorizationRequired;
-                entry.Message = $"Google rejected the refresh token ({reason}). Upload a new token.json.";
+                entry.Message = reason == "deleted_client"
+                    ? $"Google rejected the refresh token ({reason}): the OAuth client in credentials.json no longer exists. Create a new OAuth client, then a new token.json with it."
+                    : $"Google rejected the refresh token ({reason}). Upload a new token.json.";
             }
         }
 
