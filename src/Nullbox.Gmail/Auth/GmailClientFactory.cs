@@ -63,6 +63,10 @@ internal sealed class StoredCredentialInitializer(GmailCredentialStore store, Gm
         }
     }
 
+    /// <summary>
+    /// Errors that retrying cannot fix. <c>deleted_client</c> means the OAuth client itself is gone (Google deletes
+    /// clients left unused for months), so the refresh token is dead too.
+    /// </summary>
     private static bool IsRejected(TokenResponseException ex)
-        => ex.Error?.Error is "invalid_grant" or "invalid_client" or "unauthorized_client";
+        => ex.Error?.Error is "invalid_grant" or "invalid_client" or "unauthorized_client" or "deleted_client";
 }

@@ -7,6 +7,7 @@ WORKDIR /src
 # Restore first so the package layer is cached until a project file changes.
 COPY global.json Directory.Build.props .editorconfig ./
 COPY src/Nullbox.Core/Nullbox.Core.csproj src/Nullbox.Core/
+COPY src/Nullbox.Data/Nullbox.Data.csproj src/Nullbox.Data/
 COPY src/Nullbox.Gmail/Nullbox.Gmail.csproj src/Nullbox.Gmail/
 COPY src/Nullbox.Jev/Nullbox.Jev.csproj src/Nullbox.Jev/
 COPY src/Nullbox.Web/Nullbox.Web.csproj src/Nullbox.Web/

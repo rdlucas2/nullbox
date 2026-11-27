@@ -79,11 +79,15 @@ public sealed class GmailCredentialStoreTests : IDisposable
         Assert.Empty(Directory.GetFiles(_files.Directory, "*.tmp"));
     }
 
-    [Fact]
-    public async Task Revoked_token_surfaces_reauthorization_and_stops_calling_google()
+    [Theory]
+    [InlineData("invalid_grant")]
+    [InlineData("invalid_client")]
+    [InlineData("unauthorized_client")]
+    [InlineData("deleted_client")]
+    public async Task Revoked_token_surfaces_reauthorization_and_stops_calling_google(string error)
     {
         WriteToken(TokenSamples.EmailBlasterToken(DateTimeOffset.UtcNow.AddHours(-1)));
-        _google.Token = _ => FakeGoogle.TokenError("invalid_grant");
+        _google.Token = _ => FakeGoogle.TokenError(error);
         var store = Store();
         var gmail = new GmailClientFactory(store, _google.Factory).Create();
 
@@ -92,7 +96,7 @@ public sealed class GmailCredentialStoreTests : IDisposable
 
         var status = store.GetStatus(GmailTokenKind.Primary);
         Assert.Equal(GmailAuthState.ReauthorizationRequired, status.State);
-        Assert.Contains("invalid_grant", status.Message, StringComparison.Ordinal);
+        Assert.Contains(error, status.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(_files.TokenPath(GmailTokenKind.Primary)), "the rejected token stays for diagnosis");
 
         var calls = _google.Requests.Count;

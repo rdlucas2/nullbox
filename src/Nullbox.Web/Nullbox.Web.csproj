@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nullbox.Core\Nullbox.Core.csproj" />
+    <ProjectReference Include="..\Nullbox.Data\Nullbox.Data.csproj" />
     <ProjectReference Include="..\Nullbox.Gmail\Nullbox.Gmail.csproj" />
     <ProjectReference Include="..\Nullbox.Jev\Nullbox.Jev.csproj" />
   </ItemGroup>

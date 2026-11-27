@@ -1,0 +1,50 @@
+{
+  "$schema": "/schemas/ruleset.schema.json",
+  "name": "promo-cleanup",
+  "description": "Labels marketing mail and archives it when Jev is confident. Screens out mail from real people first.",
+  "mode": "dry_run",
+  "model": "jev-latest",
+  "state": {
+    "fields": ["from", "subject", "snippet", "labels", "age_days", "has_unsubscribe"],
+    "body_max_chars": 2000
+  },
+  "questions": {
+    "from_a_person": {
+      "type": "noul",
+      "instructions": "This email was written personally by a real person to the recipient, not sent by a company or an automated system."
+    },
+    "category": {
+      "type": "choice",
+      "instructions": "What kind of email is this?",
+      "criteria": {
+        "promo": "Marketing, sales, deals or newsletters the recipient did not ask a question about",
+        "receipt": "A purchase, payment, booking or shipping confirmation",
+        "notification": "An automated alert or update from a service the recipient uses",
+        "personal": "A message from a real person",
+        "other": "Anything else"
+      }
+    },
+    "fits_category": {
+      "type": "noul",
+      "instructions": "One of these clearly describes this email: marketing, receipt, service notification, personal message."
+    }
+  },
+  "match": "first",
+  "decisions": [
+    {
+      "name": "Never touch mail from real people",
+      "when": "from_a_person.noul >= 0.5",
+      "actions": ["none"]
+    },
+    {
+      "name": "Archive confident promos",
+      "when": "category.choice == \"promo\" && category.confidence >= 0.85 && fits_category.noul >= 0.7",
+      "actions": ["label:nullbox/promo", "mark_read", "archive"]
+    },
+    {
+      "name": "Label likely promos",
+      "when": "category.probabilities.promo >= 0.6",
+      "actions": ["label:nullbox/promo"]
+    }
+  ]
+}

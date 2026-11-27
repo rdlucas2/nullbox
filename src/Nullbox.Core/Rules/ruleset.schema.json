@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rdlucas2/nullbox/schemas/ruleset.schema.json",
+  "title": "nullbox rule set",
+  "description": "Which email fields Jev sees, the questions it is asked (Jev's own request shape), and decisions mapping answers to Gmail actions.",
+  "type": "object",
+  "required": [
+    "name",
+    "questions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "description": "Identity of the rule set.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    },
+    "mode": {
+      "description": "dry_run records decisions without touching Gmail; live applies them.",
+      "enum": [
+        "dry_run",
+        "live"
+      ],
+      "default": "dry_run"
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "default": "jev-latest"
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "from",
+              "subject",
+              "snippet",
+              "body",
+              "labels",
+              "age_days",
+              "has_unsubscribe",
+              "date"
+            ]
+          }
+        },
+        "body_max_chars": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32000,
+          "default": 2000
+        }
+      }
+    },
+    "questions": {
+      "description": "Question name to Jev question.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 50,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/question"
+      }
+    },
+    "match": {
+      "description": "first: the first matching decision wins; all: every matching decision applies.",
+      "enum": [
+        "first",
+        "all"
+      ],
+      "default": "first"
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "description": "Instructions and criteria may be a string or structured JSON.",
+      "type": [
+        "string",
+        "object",
+        "array",
+        "null"
+      ]
+    },
+    "question": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "choice",
+            "score",
+            "noul"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "choice"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/choice"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "score"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/score"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "noul"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/noul"
+          }
+        }
+      ]
+    },
+    "choice": {
+      "type": "object",
+      "required": [
+        "type",
+        "criteria"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "choice"
+        },
+        "instructions": {
+          "$ref": "#/$defs/text"
+        },
+        "criteria": {
+          "description": "Option name to its description.",
+          "type": "object",
+          "minProperties": 2,
+          "maxProperties": 50,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "score": {
+      "type": "object",
+      "required": [
+        "type",
+        "criteria"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "score"
+        },
+        "instructions": {
+          "$ref": "#/$defs/text"
+        },
+        "criteria": {
+          "description": "Level descriptions, lowest first.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "noul": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "noul"
+        },
+        "instructions": {
+          "$ref": "#/$defs/text"
+        },
+        "criteria": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "true": {
+              "$ref": "#/$defs/text"
+            },
+            "false": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": [
+        "when",
+        "actions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "when": {
+          "description": "Condition over answers, e.g. category.choice == \"promo\" && category.confidence >= 0.8",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "pattern": "^(label:.+|mark_read|archive|trash|star|none)$"
+          }
+        }
+      }
+    }
+  }
+}

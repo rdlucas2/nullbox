@@ -5,6 +5,7 @@ Gmail inbox helper: a Linux container running .NET + Hangfire that polls Gmail o
 with a web UI to build and edit the Jev rules (choices, scores, nouls) on the fly.
 
 See [PLAN.md](PLAN.md) for architecture and milestones, [docs/jev-api.md](docs/jev-api.md) for the Jev contract,
+[docs/rules.md](docs/rules.md) for writing rule sets,
 and the GitHub issues for the work breakdown. Gmail actions are a port of [emailBlaster](https://github.com/rdlucas2/emailblaster).
 
 ## Layout
@@ -13,6 +14,7 @@ and the GitHub issues for the work breakdown. Gmail actions are a port of [email
 |---|---|
 | `src/Nullbox.Web` | ASP.NET Core host: endpoints, Hangfire, Blazor + MudBlazor UI (`Components/`) |
 | `src/Nullbox.Core` | Domain model, rule model, interfaces (`IGmailService`, `IJevClient`, ...) |
+| `src/Nullbox.Data` | EF Core + SQLite (`{data}/nullbox.db`): rule-set versions, migrations applied on start |
 | `src/Nullbox.Gmail` | Gmail API implementation |
 | `src/Nullbox.Jev` | TypeSafe Jev HTTP client |
 | `tools/Nullbox.Auth` | `nullbox-auth`: one-time Google consent on a PC, writes `token.json` ([docs/gmail-auth.md](docs/gmail-auth.md)) |

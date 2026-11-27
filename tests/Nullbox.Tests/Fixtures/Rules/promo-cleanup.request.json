@@ -1,0 +1,32 @@
+{
+  "model": "jev-latest",
+  "state": {
+    "from": "Deals <deals@shop.example>",
+    "subject": "48 hours only: 30% off everything",
+    "snippet": "Our biggest sale of the season starts now",
+    "labels": ["INBOX", "UNREAD", "CATEGORY_PROMOTIONS"],
+    "age_days": 2,
+    "has_unsubscribe": true
+  },
+  "questions": {
+    "from_a_person": {
+      "type": "noul",
+      "instructions": "This email was written personally by a real person to the recipient, not sent by a company or an automated system."
+    },
+    "category": {
+      "type": "choice",
+      "instructions": "What kind of email is this?",
+      "criteria": {
+        "promo": "Marketing, sales, deals or newsletters the recipient did not ask a question about",
+        "receipt": "A purchase, payment, booking or shipping confirmation",
+        "notification": "An automated alert or update from a service the recipient uses",
+        "personal": "A message from a real person",
+        "other": "Anything else"
+      }
+    },
+    "fits_category": {
+      "type": "noul",
+      "instructions": "One of these clearly describes this email: marketing, receipt, service notification, personal message."
+    }
+  }
+}
