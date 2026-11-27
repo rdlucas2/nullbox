@@ -99,7 +99,7 @@ public sealed class RuleSetStoreTests : IAsyncLifetime
     [Fact]
     public async Task Invalid_documents_are_not_saved()
     {
-        var bad = Promo with { Decisions = [new DecisionRule { When = "ghost.noul > 0.5", Actions = ["archive"] }] };
+        var bad = Promo with { Decisions = [new DecisionRule { When = "ghost.noul > 0.5", Actions = ["star"] }] };
 
         var ex = await Assert.ThrowsAsync<RuleSetValidationException>(() => Store().SaveAsync(bad));
 
@@ -154,6 +154,36 @@ public sealed class RuleSetStoreTests : IAsyncLifetime
         Assert.Equal(["important-mail-guard", "promo-cleanup"], list.Select(s => s.Name));
         Assert.All(list, s => Assert.Equal((1, RuleSetMode.DryRun), (s.ActiveVersion!.Value, s.ActiveMode!.Value)));
         Assert.Equal(2, list.Single(s => s.Name == RuleSetSeeds.PromoCleanup).LatestVersion);
+    }
+
+    [Fact]
+    public async Task Startup_upgrades_stored_versions_that_use_the_old_archive_and_trash_actions()
+    {
+        const string legacy = """
+            {"name":"old-junk","mode":"live","questions":{"spam":{"type":"noul"}},"decisions":[
+              {"name":"Bin it","when":"spam.noul >= 0.9","actions":["mark_read","trash"]}]}
+            """;
+        await using (var scope = _services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NullboxDbContext>();
+            db.RuleSets.Add(new RuleSetRow
+            {
+                Name = "old-junk",
+                ActiveVersion = 1,
+                Versions = [new RuleSetVersionRow { Version = 1, Json = legacy, Hash = "old" }],
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await new DatabaseInitializer(_services.GetRequiredService<IServiceScopeFactory>(), NullLogger<DatabaseInitializer>.Instance).StartAsync(default);
+
+        var active = await Store().GetVersionAsync("old-junk");
+        Assert.NotNull(active);
+        Assert.Equal(1, active.Version);
+        Assert.Equal(["mark_read"], active.Document.Decisions[0].Actions);
+        Assert.Equal(RemoveMode.Archive, active.Document.Decisions[0].Remove);
+        Assert.Equal(RuleJson.Hash(active.Document), active.Hash);
+        Assert.Equal(RuleSetMode.Live, (await Store().GetAsync("old-junk"))!.ActiveMode);
     }
 }
 

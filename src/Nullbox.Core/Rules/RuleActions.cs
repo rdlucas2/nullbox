@@ -7,19 +7,16 @@ public enum RuleActionKind
 
     MarkRead,
 
-    /// <summary>Remove from the inbox.</summary>
-    Archive,
-
-    /// <summary>Move to Trash (recoverable for 30 days). Rules never delete permanently.</summary>
-    Trash,
-
     Star,
 
     /// <summary>Match and stop (with first-match) without changing anything.</summary>
     None,
 }
 
-/// <summary>A parsed decision action: <c>label:&lt;name&gt;</c>, <c>mark_read</c>, <c>archive</c>, <c>trash</c>, <c>star</c> or <c>none</c>.</summary>
+/// <summary>
+/// A parsed decision action: <c>label:&lt;name&gt;</c>, <c>mark_read</c>, <c>star</c> or <c>none</c>. Taking mail out of
+/// the inbox is not an action: it is the decision's <see cref="DecisionRule.Remove"/> switch.
+/// </summary>
 public sealed record RuleAction(RuleActionKind Kind, string? Label = null)
 {
     public const int MaxLabelLength = 225;
@@ -53,15 +50,19 @@ public sealed record RuleAction(RuleActionKind Kind, string? Label = null)
         RuleActionKind? kind = value switch
         {
             "mark_read" => RuleActionKind.MarkRead,
-            "archive" => RuleActionKind.Archive,
-            "trash" => RuleActionKind.Trash,
             "star" => RuleActionKind.Star,
             "none" => RuleActionKind.None,
             _ => null,
         };
         if (kind is null)
         {
-            error = $"Unknown action '{value}'. Use label:<name>, mark_read, archive, trash, star or none.";
+            error = value switch
+            {
+                "archive" => "Archiving is the rule's switch, not an action: set \"remove\": \"archive\" on the decision.",
+                "trash" => "Deleting is the rule's switch, not an action: set \"remove\": \"delete\" on the decision once you trust it "
+                    + "(start with \"remove\": \"archive\").",
+                _ => $"Unknown action '{value}'. Use label:<name>, mark_read, star or none, and \"remove\" to archive or delete.",
+            };
             return false;
         }
 
@@ -76,8 +77,6 @@ public sealed record RuleAction(RuleActionKind Kind, string? Label = null)
     {
         RuleActionKind.Label => LabelPrefix + Label,
         RuleActionKind.MarkRead => "mark_read",
-        RuleActionKind.Archive => "archive",
-        RuleActionKind.Trash => "trash",
         RuleActionKind.Star => "star",
         _ => "none",
     };

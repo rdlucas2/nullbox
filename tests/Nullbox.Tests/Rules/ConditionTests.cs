@@ -108,8 +108,6 @@ public sealed class ConditionTests
     [InlineData("label:nullbox/promo", RuleActionKind.Label, "nullbox/promo")]
     [InlineData("label: Receipts ", RuleActionKind.Label, "Receipts")]
     [InlineData("mark_read", RuleActionKind.MarkRead, null)]
-    [InlineData("archive", RuleActionKind.Archive, null)]
-    [InlineData("trash", RuleActionKind.Trash, null)]
     [InlineData("star", RuleActionKind.Star, null)]
     [InlineData("none", RuleActionKind.None, null)]
     public void Actions_parse(string text, RuleActionKind kind, string? label)
@@ -122,6 +120,8 @@ public sealed class ConditionTests
 
     [Theory]
     [InlineData("delete")]
+    [InlineData("archive")]
+    [InlineData("trash")]
     [InlineData("label:")]
     [InlineData("Archive")]
     [InlineData("")]

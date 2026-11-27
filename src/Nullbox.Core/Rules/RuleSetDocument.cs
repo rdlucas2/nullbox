@@ -19,8 +19,11 @@ public sealed record RuleSetDocument
 
     public string? Description { get; init; }
 
-    /// <summary>Dry run records decisions without touching Gmail; live applies them. New rule sets are dry runs.</summary>
-    public RuleSetMode Mode { get; init; } = RuleSetMode.DryRun;
+    /// <summary>
+    /// Live applies decisions; dry run only records them. New rule sets are live: a rule is tried by letting it
+    /// archive (see <see cref="DecisionRule.Remove"/>), not by watching a dry run.
+    /// </summary>
+    public RuleSetMode Mode { get; init; } = RuleSetMode.Live;
 
     /// <summary>Jev model or alias to ask.</summary>
     public string Model { get; init; } = JevRequest.DefaultModel;
@@ -83,13 +86,37 @@ public static class StateFields
 
 /// <summary>
 /// <c>when</c> is a condition over answers, e.g. <c>category.choice == "promo" &amp;&amp; category.confidence &gt;= 0.8</c>
-/// (see <see cref="ConditionParser"/>); <c>actions</c> are <see cref="RuleAction"/> strings like <c>label:promo</c>.
+/// (see <see cref="ConditionParser"/>); <c>actions</c> are <see cref="RuleAction"/> strings like <c>label:promo</c>;
+/// <c>remove</c> is the Archive | Delete switch.
 /// </summary>
 public sealed record DecisionRule
 {
+    /// <summary>Shown in the editor and audit log, and names the rule's review label (<see cref="ReviewLabels"/>).</summary>
     public string? Name { get; init; }
 
     public required string When { get; init; }
 
-    public required IReadOnlyList<string> Actions { get; init; }
+    public IReadOnlyList<string> Actions { get; init; } = [];
+
+    /// <summary>
+    /// Whether matching mail leaves the inbox: <see cref="RemoveMode.Archive"/> (with the review label, the default
+    /// for new rules in the editor) or <see cref="RemoveMode.Delete"/> (Trash). Null leaves it in the inbox.
+    /// </summary>
+    public RemoveMode? Remove { get; init; }
+}
+
+/// <summary>The Archive | Delete switch on a decision.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<RemoveMode>))]
+public enum RemoveMode
+{
+    /// <summary>Remove INBOX and add the rule's review label, so what it took can be checked in Gmail.</summary>
+    [JsonStringEnumMemberName("archive")]
+    Archive,
+
+    /// <summary>
+    /// Move to Trash (recoverable for 30 days; never a permanent delete). While the app-wide delete lock is on
+    /// (<c>Nullbox:Gmail:AllowDelete</c>), this archives with the review label instead.
+    /// </summary>
+    [JsonStringEnumMemberName("delete")]
+    Delete,
 }

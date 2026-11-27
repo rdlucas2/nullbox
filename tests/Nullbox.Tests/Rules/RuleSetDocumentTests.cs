@@ -190,8 +190,8 @@ public sealed class RuleSetDocumentTests
     }
 
     [Theory]
-    [InlineData(new[] { "none", "archive" }, "none cannot be combined")]
-    [InlineData(new[] { "archive", "archive" }, "only be listed once")]
+    [InlineData(new[] { "none", "star" }, "none cannot be combined")]
+    [InlineData(new[] { "star", "star" }, "only be listed once")]
     [InlineData(new[] { "label:" }, "needs a label name")]
     public void Actions_are_checked(string[] actions, string message)
         => Assert.Contains(ErrorsFor("spam.noul > 0.5", actions), e => e.Message.Contains(message, StringComparison.Ordinal));
@@ -199,7 +199,7 @@ public sealed class RuleSetDocumentTests
     [Fact]
     public void Validation_errors_block_parsing_and_name_the_path()
     {
-        const string json = """{"name":"x","questions":{"a":{"type":"noul"}},"decisions":[{"when":"b.noul > 0.5","actions":["archive"]}]}""";
+        const string json = """{"name":"x","questions":{"a":{"type":"noul"}},"decisions":[{"when":"b.noul > 0.5","actions":["star"]}]}""";
 
         var ex = Assert.Throws<RuleSetValidationException>(() => RuleJson.ParseOrThrow(json));
 
