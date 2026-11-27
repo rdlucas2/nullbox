@@ -61,6 +61,8 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Jobs:InboxPollCron` | `*/5 * * * *` | How often the `inbox-poll` job checks Gmail for new inbox mail (UTC). |
 | `Nullbox:Jobs:InboxResyncWindow` | `2d` | Gmail `newer_than:` window listed on first run and when history has expired. |
 | `Nullbox:Jobs:MessageWorkers` | `2` | Messages processed at once (workers on the `inbox` queue). |
+| `Nullbox:Gmail:AllowDelete` | `false` | The app-wide **delete lock**. While false, nothing is moved to Trash or deleted, whatever a rule or job says; rules archive instead. The dashboard shows "Deletes locked". |
+| `Nullbox:Gmail:AllowPermanentDelete` | `false` | Permanent delete (bulk jobs only, never rules). Also needs `AllowDelete`. |
 
 ## Jobs and dashboard
 

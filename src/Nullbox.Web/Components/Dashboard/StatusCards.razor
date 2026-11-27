@@ -8,6 +8,11 @@
                 <CardHeaderActions><MudChip T="string" Size="Size.Small" Color="GmailColor" data-testid="gmail-state">@GmailLabel</MudChip></CardHeaderActions>
             </MudCardHeader>
             <MudCardContent>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="ml-0 mb-2" data-testid="delete-lock"
+                         Color="@(Snapshot.DeletesAllowed ? Color.Warning : Color.Success)"
+                         Icon="@(Snapshot.DeletesAllowed ? Icons.Material.Filled.LockOpen : Icons.Material.Filled.Lock)">
+                    @(Snapshot.DeletesAllowed ? "Deletes allowed" : "Deletes locked")
+                </MudChip>
                 @if (Snapshot.Gmail is { } g && g.State == GmailAuthState.Ready)
                 {
                     <MudText Typo="Typo.body2">Scopes: @(g.Scopes.Count == 0 ? "unknown" : string.Join(", ", g.Scopes.Select(ShortScope)))</MudText>
