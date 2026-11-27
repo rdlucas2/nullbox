@@ -16,3 +16,7 @@ client_secret*.json
 .env.*
 !.env.example
 secrets/
+
+# Test output
+TestResults/
+*.trx
