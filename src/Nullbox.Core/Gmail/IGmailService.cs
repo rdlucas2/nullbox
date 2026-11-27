@@ -1,0 +1,98 @@
+namespace Nullbox.Core.Gmail;
+
+/// <summary>
+/// Gmail operations used by nullbox (port of emailBlaster's <c>main.py</c>). Every bulk method de-duplicates ids,
+/// does nothing for an empty list and chunks requests at Gmail's 1000-id limit.
+/// </summary>
+public interface IGmailService
+{
+    /// <summary>
+    /// Returns the ids of messages matching a Gmail search query, following every result page.
+    /// <c>maxResults</c> stops after that many ids; <c>null</c> means all of them.
+    /// </summary>
+    Task<IReadOnlyList<string>> SearchAsync(string query, int? maxResults = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Fetches one message. <see cref="MessageFormat.Metadata"/> skips the body to save quota.</summary>
+    Task<GmailMessage> GetMessageAsync(string messageId, MessageFormat format = MessageFormat.Metadata, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the id of the user label with this name, creating it if it does not exist.</summary>
+    Task<string> EnsureLabelAsync(string name, CancellationToken cancellationToken = default);
+
+    /// <summary>Adds and removes label ids on many messages.</summary>
+    Task BatchModifyAsync(
+        IEnumerable<string> messageIds,
+        IEnumerable<string>? addLabelIds,
+        IEnumerable<string>? removeLabelIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Removes the UNREAD label.</summary>
+    Task MarkReadAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes INBOX and, when <paramref name="label"/> is given, applies that label (created if needed).</summary>
+    Task ArchiveAsync(IEnumerable<string> messageIds, string? label, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves messages to Trash (recoverable for 30 days).</summary>
+    Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Permanently deletes messages. Throws <see cref="PermanentDeleteDisabledException"/> unless
+    /// <see cref="GmailOptions.AllowPermanentDelete"/> is on.
+    /// </summary>
+    Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
+}
+
+public enum MessageFormat
+{
+    /// <summary>Headers, labels and snippet only.</summary>
+    Metadata,
+
+    /// <summary>Also the plain-text body, truncated to <see cref="GmailOptions.BodyMaxChars"/>.</summary>
+    Full,
+}
+
+/// <summary>The parts of a Gmail message nullbox works with.</summary>
+public sealed record GmailMessage(
+    string Id,
+    string? ThreadId,
+    string? From,
+    string? Subject,
+    string? Date,
+    string? ListUnsubscribe,
+    IReadOnlyList<string> LabelIds,
+    string? Snippet,
+    DateTimeOffset? InternalDate,
+    string? Body)
+{
+    public bool HasUnsubscribe => !string.IsNullOrWhiteSpace(ListUnsubscribe);
+}
+
+/// <summary>Well-known Gmail system label ids.</summary>
+public static class GmailLabels
+{
+    public const string Inbox = "INBOX";
+    public const string Unread = "UNREAD";
+    public const string Starred = "STARRED";
+    public const string Important = "IMPORTANT";
+    public const string Trash = "TRASH";
+}
+
+public sealed class GmailOptions
+{
+    public const string SectionName = "Nullbox:Gmail";
+
+    /// <summary>Permanent delete is off by default; trash is the recoverable alternative.</summary>
+    public bool AllowPermanentDelete { get; set; }
+
+    /// <summary>Body text is cut to this many characters (bodies are never logged).</summary>
+    public int BodyMaxChars { get; set; } = 4000;
+
+    /// <summary>Retries after the first attempt on 429, 5xx and Gmail rate-limit 403s.</summary>
+    public int MaxRetries { get; set; } = 5;
+
+    public TimeSpan RetryBaseDelay { get; set; } = TimeSpan.FromSeconds(1);
+
+    public TimeSpan RetryMaxDelay { get; set; } = TimeSpan.FromSeconds(32);
+}
+
+public sealed class PermanentDeleteDisabledException()
+    : InvalidOperationException("Permanent delete is disabled. Set Nullbox:Gmail:AllowPermanentDelete=true to allow it, or use trash.");

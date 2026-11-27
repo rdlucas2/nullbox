@@ -7,4 +7,15 @@
   <ItemGroup>
     <ProjectReference Include="..\Nullbox.Core\Nullbox.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Apis.Gmail.v1" Version="1.78.0.4327" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nullbox.Tests" />
+  </ItemGroup>
+
 </Project>
