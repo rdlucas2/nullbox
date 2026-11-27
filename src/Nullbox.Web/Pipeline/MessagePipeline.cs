@@ -13,7 +13,9 @@ namespace Nullbox.Web.Pipeline;
 /// Processes one inbox message: for each active rule set, build the Jev request from the email, ask Jev, run the
 /// decision engine, and record the verdict. Gmail is only changed for a <c>live</c> rule set, with the kill switch off
 /// and the hourly cap not reached. A rule-set version that already has a verdict on the message is skipped, so a
-/// retried job does not ask Jev or act twice.
+/// retried job does not ask Jev or act twice. Each verdict is an audit record with a hash of the inputs, the inputs
+/// with the body cut short, Jev's answers and the actions; a failed attempt is recorded as
+/// <see cref="DecisionOutcome.Error"/> and the failure rethrown.
 /// </summary>
 public sealed class MessagePipeline(
     IRuleSetStore ruleSets,
@@ -57,38 +59,64 @@ public sealed class MessagePipeline(
         foreach (var version in pending)
         {
             var request = JevRequestBuilder.Build(version.Document, message, time.GetUtcNow());
-            var result = await jev.EvaluateAsync(request, new JevCallContext(messageId, version.Key), cancellationToken);
-            var decisions = DecisionEngine.Evaluate(version.Document, result);
-            var plan = ActionPlan.Create(message, decisions, gmailOptions.Value.AllowDelete);
-            var outcome = await OutcomeAsync(version.Document.Mode, plan, cancellationToken);
-
-            if (outcome == DecisionOutcome.Applied)
+            var audit = new DecisionRecord(
+                messageId,
+                version.Key,
+                version.Document.Mode,
+                DecisionOutcome.Error,
+                [],
+                [],
+                [],
+                string.Empty,
+                "{}",
+                time.GetUtcNow())
             {
-                await ActionExecutor.ApplyAsync(gmail, messageId, plan, cancellationToken);
-                message = AfterApply(message, plan);
+                InputsHash = AuditInputs.Hash(request.State),
+                StateJson = AuditInputs.Redact(request.State, options.Value.Audit.StoredBodyChars).ToJsonString(),
+                Labels = message.LabelIds,
+            };
+
+            try
+            {
+                var result = await jev.EvaluateAsync(request, new JevCallContext(messageId, version.Key), cancellationToken);
+                var decisions = DecisionEngine.Evaluate(version.Document, result);
+                var plan = ActionPlan.Create(message, decisions, gmailOptions.Value.AllowDelete);
+
+                // Filled in before Gmail is touched, so a failed apply still records what was decided.
+                audit = audit with
+                {
+                    Decisions = [.. decisions.Select(d => d.Label)],
+                    Actions = plan.Describe(),
+                    Skipped = [.. plan.Skipped.Select(s => $"{s.Action} ({s.Decision}): {s.Reason}")],
+                    Model = result.Model,
+                    AnswersJson = JsonSerializer.Serialize(result.Answers, JevJson.Options),
+                    Confidence = AnswerConfidence.Lowest(result.Answers),
+                };
+
+                var outcome = await OutcomeAsync(version.Document.Mode, plan, cancellationToken);
+                if (outcome == DecisionOutcome.Applied)
+                {
+                    await ActionExecutor.ApplyAsync(gmail, messageId, plan, cancellationToken);
+                    message = AfterApply(message, plan);
+                }
+
+                audit = audit with { Outcome = outcome, At = time.GetUtcNow() };
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                // Keep a trace of the failed attempt; Error records don't count as a verdict, so the retry runs again.
+                await log.RecordAsync(audit with { Error = $"{ex.GetType().Name}: {ex.Message}", At = time.GetUtcNow() }, CancellationToken.None);
+                throw;
             }
 
-            await log.RecordAsync(
-                new DecisionRecord(
-                    messageId,
-                    version.Key,
-                    version.Document.Mode,
-                    outcome,
-                    [.. decisions.Select(d => d.Label)],
-                    plan.Describe(),
-                    [.. plan.Skipped.Select(s => $"{s.Action} ({s.Decision}): {s.Reason}")],
-                    result.Model,
-                    JsonSerializer.Serialize(result.Answers, JevJson.Options),
-                    time.GetUtcNow()),
-                cancellationToken);
-
+            await log.RecordAsync(audit, cancellationToken);
             logger.LogInformation(
                 "Message {MessageId}: {RuleSet} matched {Decisions} decision(s), {Outcome} with {Actions} action(s)",
                 messageId,
                 version.Key,
-                decisions.Count,
-                outcome,
-                plan.Describe().Count);
+                audit.Decisions.Count,
+                audit.Outcome,
+                audit.Actions.Count);
         }
     }
 

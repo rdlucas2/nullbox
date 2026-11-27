@@ -16,6 +16,8 @@ public sealed class NullboxOptions
     public JobSettings Jobs { get; set; } = new();
 
     public PipelineSettings Pipeline { get; set; } = new();
+
+    public AuditSettings Audit { get; set; } = new();
 }
 
 public enum HangfireStorageKind
@@ -74,4 +76,20 @@ public sealed class PipelineSettings
 
     /// <summary>How long to wait before retrying a message when Gmail or Jev needs re-authorizing.</summary>
     public TimeSpan AuthRetryDelay { get; set; } = TimeSpan.FromHours(1);
+}
+
+/// <summary>How long decision records are kept, and how much of each email they keep.</summary>
+public sealed class AuditSettings
+{
+    /// <summary>Decision records older than this many days are deleted by the purge job. 0 or less keeps them forever.</summary>
+    public int RetentionDays { get; set; } = 90;
+
+    /// <summary>Cron for the purge job (UTC).</summary>
+    public string PurgeCron { get; set; } = "17 3 * * *";
+
+    /// <summary>
+    /// The body sent to Jev is cut to this many characters before it is stored (0 stores no body). Full bodies are
+    /// never kept; the inputs hash still covers the whole state.
+    /// </summary>
+    public int StoredBodyChars { get; set; } = 280;
 }
