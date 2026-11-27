@@ -1,0 +1,43 @@
+{
+  "$schema": "/schemas/ruleset.schema.json",
+  "name": "important-mail-guard",
+  "description": "Stars urgent mail that needs a reply and flags likely phishing. Never archives or trashes.",
+  "mode": "dry_run",
+  "model": "jev-latest",
+  "state": {
+    "fields": ["from", "subject", "snippet", "body", "labels"],
+    "body_max_chars": 1500
+  },
+  "questions": {
+    "urgency": {
+      "type": "score",
+      "instructions": "How soon does the recipient need to act on this email?",
+      "criteria": ["Can wait or needs no action", "Needs attention this week", "Needs attention today"]
+    },
+    "needs_reply": {
+      "type": "noul",
+      "instructions": "The sender is waiting for the recipient to reply.",
+      "criteria": {
+        "true": "A direct question or request addressed to the recipient",
+        "false": "Broadcast, automated or informational mail"
+      }
+    },
+    "is_phishing": {
+      "type": "noul",
+      "instructions": "This message looks like phishing or a scam: it impersonates someone, pressures the reader, or asks for credentials or payment."
+    }
+  },
+  "match": "all",
+  "decisions": [
+    {
+      "name": "Flag likely phishing",
+      "when": "is_phishing.noul >= 0.9",
+      "actions": ["label:nullbox/suspicious"]
+    },
+    {
+      "name": "Star urgent mail that needs a reply",
+      "when": "urgency.score >= 1.5 && urgency.confidence >= 0.6 && needs_reply.noul >= 0.7 && is_phishing.noul < 0.5",
+      "actions": ["star", "label:nullbox/needs-reply"]
+    }
+  ]
+}
