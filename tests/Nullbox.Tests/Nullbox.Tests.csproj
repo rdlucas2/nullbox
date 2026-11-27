@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nullbox.Web\Nullbox.Web.csproj" />
     <ProjectReference Include="..\..\src\Nullbox.Core\Nullbox.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nullbox.Gmail\Nullbox.Gmail.csproj" />
   </ItemGroup>
 
 </Project>
