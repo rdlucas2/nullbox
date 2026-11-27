@@ -1,0 +1,15 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                <MudAlert Severity="Severity.Warning">Sign in at <a href="/login">/login</a> to use nullbox.</MudAlert>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <MudText Typo="Typo.h5">Nothing here.</MudText>
+        </LayoutView>
+    </NotFound>
+</Router>
