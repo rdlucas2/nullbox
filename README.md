@@ -91,14 +91,18 @@ Each new message goes through every active rule set ([docs/rules.md](docs/rules.
 (the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
 in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 
-- the rule set's `mode` is `live` (new and example rule sets are `dry_run`, which only records what would happen);
+- the rule set's `mode` is `live` (the default for new rule sets; the example rule sets are `dry_run`, which only
+  records what would happen);
 - the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
 
-Starred and important mail is never marked read, archived or trashed unless the decision sets `allow_protected`.
-Trash is the strongest action and needs the delete lock lifted (`Nullbox:Gmail:AllowDelete`); while it is on, a
-`trash` decision archives instead and records the delete as blocked. The pipeline never deletes permanently. A Jev budget that runs out, or a Gmail or Jev
-credential that needs fixing, puts the message off until later. Other failures are retried with Hangfire's growing
+A decision takes mail out of the inbox only through its `remove` switch ([docs/rules.md](docs/rules.md)): `archive`
+adds the rule's review label `nullbox/review/<rule-set>/<rule>`, and `delete` moves to Trash only when the delete lock
+is lifted (`Nullbox:Gmail:AllowDelete`). While it is on, a delete archives with the review label and is recorded as
+blocked; when several decisions match, the gentlest removal wins. Starred and important mail is never marked read
+or removed unless the decision sets `allow_protected`. The pipeline never deletes permanently.
+
+A Jev budget that runs out, or a Gmail or Jev credential that needs fixing, puts the message off until later. Other failures are retried with Hangfire's growing
 delay up to `MaxAttempts`, then the message is recorded as poison and left alone.
 
 Signed in as admin: `GET /pipeline/status`, `GET /pipeline/decisions?messageId=&limit=` (newest first) and

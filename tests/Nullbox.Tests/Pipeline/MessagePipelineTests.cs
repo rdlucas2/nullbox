@@ -45,7 +45,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
         var record = Assert.Single(await _db.Log().ListAsync("m1"));
         Assert.Equal(("promo-cleanup@v1", RuleSetMode.DryRun, DecisionOutcome.DryRun), (record.RuleSetKey, record.Mode, record.Outcome));
         Assert.Equal(["Archive confident promos"], record.Decisions);
-        Assert.Equal(["label:nullbox/promo", "mark_read", "archive"], record.Actions);
+        Assert.Equal(["label:nullbox/promo", "label:nullbox/review/promo-cleanup/archive-confident-promos", "mark_read", "archive"], record.Actions);
         Assert.Contains("\"promo\"", record.AnswersJson, StringComparison.Ordinal);
         Assert.Equal(new JevCallContext("m1", version.Key), Assert.Single(_jev.Calls).Context);
     }
@@ -58,7 +58,9 @@ public sealed class MessagePipelineTests : IAsyncLifetime
 
         await Pipeline().ProcessAsync("m1", default);
 
-        Assert.Equal(["label:nullbox/promo", "modify:m1:+Label_nullbox/promo:-UNREAD,INBOX"], _gmail.Changes);
+        Assert.Equal(
+            ["label:nullbox/promo", "label:nullbox/review/promo-cleanup/archive-confident-promos", "modify:m1:+Label_nullbox/promo,Label_nullbox/review/promo-cleanup/archive-confident-promos:-UNREAD,INBOX"],
+            _gmail.Changes);
         Assert.Equal(DecisionOutcome.Applied, Assert.Single(await _db.Log().ListAsync("m1")).Outcome);
     }
 
@@ -66,7 +68,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     {
         Name = "junk",
         Mode = RuleSetMode.Live,
-        Decisions = [new DecisionRule { Name = "Trash promos", When = "category.choice == \"promo\"", Actions = ["trash"] }],
+        Decisions = [new DecisionRule { Name = "Trash promos", When = "category.choice == \"promo\"", Remove = RemoveMode.Delete }],
     };
 
     [Fact]
@@ -77,9 +79,10 @@ public sealed class MessagePipelineTests : IAsyncLifetime
 
         await Pipeline().ProcessAsync("m1", default);
 
-        Assert.Equal(["modify:m1:+:-INBOX"], _gmail.Changes);
+        Assert.Equal(["label:nullbox/review/junk/trash-promos", "modify:m1:+Label_nullbox/review/junk/trash-promos:-INBOX"], _gmail.Changes);
         var record = Assert.Single(await _db.Log().ListAsync("m1"));
-        Assert.Equal((DecisionOutcome.Applied, "archive"), (record.Outcome, Assert.Single(record.Actions)));
+        Assert.Equal(DecisionOutcome.Applied, record.Outcome);
+        Assert.Equal(["label:nullbox/review/junk/trash-promos", "archive"], record.Actions);
         Assert.Contains("delete blocked by lock", Assert.Single(record.Skipped), StringComparison.Ordinal);
     }
 
@@ -93,7 +96,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
 
         await Pipeline().ProcessAsync("m1", default);
 
-        Assert.Equal(["trash:m1"], _gmail.Changes);
+        Assert.Equal(["label:nullbox/review/junk/trash-promos", "modify:m1:+Label_nullbox/review/junk/trash-promos:-", "trash:m1"], _gmail.Changes);
         Assert.Empty(Assert.Single(await _db.Log().ListAsync("m1")).Skipped);
     }
 
@@ -124,7 +127,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
         await Pipeline().ProcessAsync("m1", default);
 
         Assert.Single(_jev.Calls);
-        Assert.Equal(2, _gmail.Changes.Count);
+        Assert.Equal(3, _gmail.Changes.Count);
         Assert.Single(await _db.Log().ListAsync("m1"));
     }
 

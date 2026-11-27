@@ -4,10 +4,17 @@ using Nullbox.Core.Rules;
 namespace Nullbox.Core.Pipeline;
 
 /// <summary>
-/// A decision whose condition matched, with its parsed actions. <see cref="Index"/> is its position in the rule set's
-/// <c>decisions</c> list, which is also its priority (lower comes first).
+/// A decision whose condition matched, with its parsed actions, its Archive | Delete switch and, when it removes mail,
+/// its review label. <see cref="Index"/> is its position in the rule set's <c>decisions</c> list, which is also its
+/// priority (lower comes first).
 /// </summary>
-public sealed record Decision(int Index, string? Name, IReadOnlyList<RuleAction> Actions, bool AllowProtected)
+public sealed record Decision(
+    int Index,
+    string? Name,
+    IReadOnlyList<RuleAction> Actions,
+    bool AllowProtected,
+    RemoveMode? Remove = null,
+    string? ReviewLabel = null)
 {
     /// <summary>The decision's name, or <c>#index</c> when it has none.</summary>
     public string Label => string.IsNullOrWhiteSpace(Name) ? $"#{Index}" : Name;
@@ -38,7 +45,13 @@ public static class DecisionEngine
                 continue;
             }
 
-            matched.Add(new Decision(i, rule.Name, [.. rule.Actions.Select(RuleAction.Parse)], rule.AllowProtected));
+            matched.Add(new Decision(
+                i,
+                rule.Name,
+                [.. rule.Actions.Select(RuleAction.Parse)],
+                rule.AllowProtected,
+                rule.Remove,
+                rule.Remove is null ? null : ReviewLabels.For(ruleSet.Name, rule, i)));
             if (ruleSet.Match == DecisionMatch.First)
             {
                 break;

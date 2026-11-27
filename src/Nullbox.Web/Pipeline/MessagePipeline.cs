@@ -75,7 +75,7 @@ public sealed class MessagePipeline(
                     version.Document.Mode,
                     outcome,
                     [.. decisions.Select(d => d.Label)],
-                    [.. plan.Actions.Select(a => a.ToString())],
+                    plan.Describe(),
                     [.. plan.Skipped.Select(s => $"{s.Action} ({s.Decision}): {s.Reason}")],
                     result.Model,
                     JsonSerializer.Serialize(result.Answers, JevJson.Options),
@@ -88,7 +88,7 @@ public sealed class MessagePipeline(
                 version.Key,
                 decisions.Count,
                 outcome,
-                plan.Actions.Count);
+                plan.Describe().Count);
         }
     }
 
@@ -133,13 +133,17 @@ public sealed class MessagePipeline(
                 case RuleActionKind.MarkRead:
                     labels.Remove(GmailLabels.Unread);
                     break;
-                case RuleActionKind.Archive:
-                    labels.Remove(GmailLabels.Inbox);
-                    break;
-                case RuleActionKind.Trash when !labels.Contains(GmailLabels.Trash):
-                    labels.Add(GmailLabels.Trash);
-                    break;
             }
+        }
+
+        if (plan.Removal != PlannedRemoval.None)
+        {
+            labels.Remove(GmailLabels.Inbox);
+        }
+
+        if (plan.Removal == PlannedRemoval.Trash && !labels.Contains(GmailLabels.Trash))
+        {
+            labels.Add(GmailLabels.Trash);
         }
 
         return message with { LabelIds = labels };

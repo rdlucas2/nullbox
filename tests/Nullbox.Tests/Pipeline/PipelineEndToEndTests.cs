@@ -67,7 +67,7 @@ public sealed class PipelineEndToEndTests : IDisposable
 
         var dryRun = await DecisionsAsync("m1");
         Assert.All(dryRun, r => Assert.Equal(DecisionOutcome.DryRun, r.Outcome));
-        Assert.Equal(["label:nullbox/promo", "mark_read", "archive"], dryRun.Single(r => r.RuleSetKey == "promo-cleanup@v1").Actions);
+        Assert.Equal(["label:nullbox/promo", "label:nullbox/review/promo-cleanup/archive-confident-promos", "mark_read", "archive"], dryRun.Single(r => r.RuleSetKey == "promo-cleanup@v1").Actions);
         Assert.Empty(_factory.Gmail.Changes);
 
         await using (var scope = _factory.Services.CreateAsyncScope())
@@ -84,7 +84,10 @@ public sealed class PipelineEndToEndTests : IDisposable
 
         var applied = (await DecisionsAsync("m2")).Single(r => r.RuleSetKey == "promo-cleanup@v2");
         Assert.Equal((RuleSetMode.Live, DecisionOutcome.Applied), (applied.Mode, applied.Outcome));
-        Assert.Equal(["label:nullbox/promo", "modify:m2:+Label_nullbox/promo:-UNREAD,INBOX"], _factory.Gmail.Changes);
+        const string review = "nullbox/review/promo-cleanup/archive-confident-promos";
+        Assert.Equal(
+            ["label:nullbox/promo", $"label:{review}", $"modify:m2:+Label_nullbox/promo,Label_{review}:-UNREAD,INBOX"],
+            _factory.Gmail.Changes);
         Assert.DoesNotContain(_factory.Gmail.Changes, c => c.Contains("m1", StringComparison.Ordinal));
     }
 

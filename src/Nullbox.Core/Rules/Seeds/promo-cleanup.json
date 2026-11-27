@@ -39,7 +39,8 @@
     {
       "name": "Archive confident promos",
       "when": "category.choice == \"promo\" && category.confidence >= 0.85 && fits_category.noul >= 0.7",
-      "actions": ["label:nullbox/promo", "mark_read", "archive"]
+      "actions": ["label:nullbox/promo", "mark_read"],
+      "remove": "archive"
     },
     {
       "name": "Label likely promos",

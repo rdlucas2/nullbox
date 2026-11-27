@@ -3,28 +3,56 @@ using Nullbox.Core.Rules;
 
 namespace Nullbox.Core.Pipeline;
 
-/// <summary>An action that was matched but will not be applied, and why.</summary>
-public sealed record SkippedAction(RuleAction Action, string Decision, string Reason);
+/// <summary>
+/// A matched action or removal that will not be applied, and why. <see cref="Action"/> is its rule text, e.g.
+/// <c>mark_read</c>, <c>archive</c> or <c>delete</c>.
+/// </summary>
+public sealed record SkippedAction(string Action, string Decision, string Reason);
+
+/// <summary>How a message leaves the inbox once the plan's actions have run.</summary>
+public enum PlannedRemoval
+{
+    None,
+
+    /// <summary>Remove INBOX.</summary>
+    Archive,
+
+    /// <summary>Move to Trash (recoverable for 30 days). Never a permanent delete.</summary>
+    Trash,
+}
 
 /// <summary>
-/// What the matched decisions would do to one message: <see cref="Actions"/> in the order they are applied
-/// (labels, star, mark read, archive, trash last), de-duplicated, and the actions held back.
+/// What the matched decisions would do to one message: <see cref="Actions"/> (labels, including each removing
+/// decision's review label, then star, then mark read), de-duplicated and in the order they are applied; then
+/// <see cref="Removal"/>; and the actions held back.
 /// </summary>
-public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList<SkippedAction> Skipped)
+public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, PlannedRemoval Removal, IReadOnlyList<SkippedAction> Skipped)
 {
     public const string ProtectedReason = "message is starred or important (set allow_protected on the decision to allow this)";
 
     public const string DeleteLockedReason = "delete blocked by lock (Nullbox:Gmail:AllowDelete is off); archived instead";
 
-    public static ActionPlan Empty { get; } = new([], []);
+    public const string GentlerDecisionReason = "another matching decision only archives; archived instead";
 
-    public bool HasChanges => Actions.Count > 0;
+    public static ActionPlan Empty { get; } = new([], PlannedRemoval.None, []);
+
+    public bool HasChanges => Actions.Count > 0 || Removal != PlannedRemoval.None;
+
+    /// <summary>The plan as rule text, in the order it is applied: actions, then <c>archive</c> or <c>delete</c>.</summary>
+    public IReadOnlyList<string> Describe() => Removal switch
+    {
+        PlannedRemoval.Archive => [.. Actions.Select(a => a.ToString()), "archive"],
+        PlannedRemoval.Trash => [.. Actions.Select(a => a.ToString()), "delete"],
+        _ => [.. Actions.Select(a => a.ToString())],
+    };
 
     /// <summary>
-    /// Combines the actions of <paramref name="decisions"/>. A starred or important message is never marked read,
-    /// archived or trashed unless the decision sets <c>allow_protected</c>; labels and stars only add, so they still
-    /// apply. <c>none</c> contributes nothing. While the delete lock is on (<paramref name="allowDelete"/> false),
-    /// <c>trash</c> becomes <c>archive</c> and the blocked delete is recorded as skipped, so Trash is never called.
+    /// Combines <paramref name="decisions"/>. Each decision that removes mail adds its review label. A starred or
+    /// important message is never marked read or removed unless the decision sets <c>allow_protected</c>; labels and
+    /// stars only add, so they still apply. <c>none</c> contributes nothing.
+    /// The gentlest removal wins: mail goes to Trash only when every matching removing decision is set to delete and
+    /// <paramref name="allowDelete"/> is true (the app-wide delete lock is lifted). Otherwise it is archived and each
+    /// held-back delete is recorded as skipped, so Trash is never called while the lock is on.
     /// </summary>
     public static ActionPlan Create(GmailMessage message, IReadOnlyList<Decision> decisions, bool allowDelete = false)
     {
@@ -34,44 +62,87 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList
         var isProtected = message.LabelIds.Contains(GmailLabels.Starred) || message.LabelIds.Contains(GmailLabels.Important);
         var actions = new List<RuleAction>();
         var skipped = new List<SkippedAction>();
+        var archive = false;
+        var deletes = new List<Decision>();
         foreach (var decision in decisions)
         {
+            var mayHide = !isProtected || decision.AllowProtected;
             foreach (var action in decision.Actions.Where(a => a.Kind != RuleActionKind.None))
             {
-                if (isProtected && !decision.AllowProtected && Hides(action.Kind))
+                if (!mayHide && Hides(action.Kind))
                 {
-                    skipped.Add(new SkippedAction(action, decision.Label, ProtectedReason));
+                    skipped.Add(new SkippedAction(action.ToString(), decision.Label, ProtectedReason));
                 }
-                else if (action.Kind == RuleActionKind.Trash && !allowDelete)
+                else
                 {
-                    skipped.Add(new SkippedAction(action, decision.Label, DeleteLockedReason));
-                    var archive = new RuleAction(RuleActionKind.Archive);
-                    if (!actions.Contains(archive))
-                    {
-                        actions.Add(archive);
-                    }
+                    AddOnce(actions, action);
                 }
-                else if (!actions.Contains(action))
-                {
-                    actions.Add(action);
-                }
+            }
+
+            if (decision.Remove is not { } remove)
+            {
+                continue;
+            }
+
+            if (!mayHide)
+            {
+                skipped.Add(new SkippedAction(Text(remove), decision.Label, ProtectedReason));
+                continue;
+            }
+
+            if (decision.ReviewLabel is { } reviewLabel)
+            {
+                AddOnce(actions, new RuleAction(RuleActionKind.Label, reviewLabel));
+            }
+
+            if (remove == RemoveMode.Archive)
+            {
+                archive = true;
+            }
+            else if (!allowDelete)
+            {
+                skipped.Add(new SkippedAction(Text(remove), decision.Label, DeleteLockedReason));
+                archive = true;
+            }
+            else
+            {
+                deletes.Add(decision);
             }
         }
 
-        return new ActionPlan([.. actions.OrderBy(a => Order(a.Kind))], skipped);
+        var removal = PlannedRemoval.None;
+        if (deletes.Count > 0 && !archive)
+        {
+            removal = PlannedRemoval.Trash;
+        }
+        else if (archive)
+        {
+            removal = PlannedRemoval.Archive;
+            skipped.AddRange(deletes.Select(d => new SkippedAction(Text(RemoveMode.Delete), d.Label, GentlerDecisionReason)));
+        }
+
+        return new ActionPlan([.. actions.OrderBy(a => Order(a.Kind))], removal, skipped);
     }
 
-    /// <summary>Actions that take mail out of view: blocked on protected messages.</summary>
-    public static bool Hides(RuleActionKind kind) => kind is RuleActionKind.MarkRead or RuleActionKind.Archive or RuleActionKind.Trash;
+    /// <summary>Actions that take mail out of view: held back on protected messages, like removals.</summary>
+    public static bool Hides(RuleActionKind kind) => kind is RuleActionKind.MarkRead;
+
+    private static string Text(RemoveMode remove) => remove == RemoveMode.Delete ? "delete" : "archive";
+
+    private static void AddOnce(List<RuleAction> actions, RuleAction action)
+    {
+        if (!actions.Contains(action))
+        {
+            actions.Add(action);
+        }
+    }
 
     private static int Order(RuleActionKind kind) => kind switch
     {
         RuleActionKind.Label => 0,
         RuleActionKind.Star => 1,
         RuleActionKind.MarkRead => 2,
-        RuleActionKind.Archive => 3,
-        RuleActionKind.Trash => 4,
-        _ => 5,
+        _ => 3,
     };
 }
 
@@ -79,8 +150,8 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList
 public static class ActionExecutor
 {
     /// <summary>
-    /// Labels, star, mark read and archive go in one modify call; trash runs last. Every step is safe to repeat,
-    /// so a retried job that already applied some of them ends up in the same state.
+    /// Labels, star, mark read and archive go in one modify call; trash runs last, after the review label is on.
+    /// Every step is safe to repeat, so a retried job that already applied some of them ends up in the same state.
     /// </summary>
     public static async Task ApplyAsync(IGmailService gmail, string messageId, ActionPlan plan, CancellationToken cancellationToken)
     {
@@ -90,7 +161,6 @@ public static class ActionExecutor
 
         var add = new List<string>();
         var remove = new List<string>();
-        var trash = false;
         foreach (var action in plan.Actions)
         {
             switch (action.Kind)
@@ -104,13 +174,12 @@ public static class ActionExecutor
                 case RuleActionKind.MarkRead:
                     remove.Add(GmailLabels.Unread);
                     break;
-                case RuleActionKind.Archive:
-                    remove.Add(GmailLabels.Inbox);
-                    break;
-                case RuleActionKind.Trash:
-                    trash = true;
-                    break;
             }
+        }
+
+        if (plan.Removal == PlannedRemoval.Archive)
+        {
+            remove.Add(GmailLabels.Inbox);
         }
 
         string[] ids = [messageId];
@@ -119,7 +188,7 @@ public static class ActionExecutor
             await gmail.BatchModifyAsync(ids, add.Count > 0 ? add : null, remove.Count > 0 ? remove : null, cancellationToken);
         }
 
-        if (trash)
+        if (plan.Removal == PlannedRemoval.Trash)
         {
             await gmail.TrashAsync(ids, cancellationToken);
         }

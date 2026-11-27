@@ -27,6 +27,8 @@ public sealed class DecisionEngineTests
 
     private static DecisionRule Rule(string name, string when, params string[] actions) => new() { Name = name, When = when, Actions = actions };
 
+    private static DecisionRule Removing(string name, string when, RemoveMode remove) => new() { Name = name, When = when, Remove = remove };
+
     private static string[] Names(IReadOnlyList<Decision> decisions) => [.. decisions.Select(d => d.Label)];
 
     [Fact]
@@ -37,9 +39,18 @@ public sealed class DecisionEngineTests
         var decision = Assert.Single(decisions);
         Assert.Equal("Archive confident promos", decision.Name);
         Assert.Equal(1, decision.Index);
-        Assert.Equal(
-            [new RuleAction(RuleActionKind.Label, "nullbox/promo"), new RuleAction(RuleActionKind.MarkRead), new RuleAction(RuleActionKind.Archive)],
-            decision.Actions);
+        Assert.Equal([new RuleAction(RuleActionKind.Label, "nullbox/promo"), new RuleAction(RuleActionKind.MarkRead)], decision.Actions);
+        Assert.Equal((RemoveMode.Archive, "nullbox/review/promo-cleanup/archive-confident-promos"), (decision.Remove!.Value, decision.ReviewLabel));
+    }
+
+    [Fact]
+    public void Decisions_that_keep_mail_have_no_review_label()
+    {
+        var set = WithDecisions(DecisionMatch.First, Rule("tag", "category.choice == \"promo\"", "label:promo"));
+
+        var decision = Assert.Single(DecisionEngine.Evaluate(set, Of(("category", Choice("promo", 0.9)))));
+
+        Assert.Equal((null, null), (decision.Remove, decision.ReviewLabel));
     }
 
     [Fact]
@@ -79,8 +90,8 @@ public sealed class DecisionEngineTests
     {
         var set = WithDecisions(
             DecisionMatch.All,
-            Rule("missing", "spam.noul >= 0.5", "trash"),
-            Rule("negated missing", "!(spam.noul >= 0.5)", "archive"),
+            Removing("missing", "spam.noul >= 0.5", RemoveMode.Delete),
+            Removing("negated missing", "!(spam.noul >= 0.5)", RemoveMode.Archive),
             Rule("present", "category.choice == \"promo\"", "label:promo"));
 
         var decisions = DecisionEngine.Evaluate(set, Of(("category", Choice("promo", 0.9))));
@@ -91,7 +102,7 @@ public sealed class DecisionEngineTests
     [Fact]
     public void Missing_answers_fall_through_to_a_later_decision_with_first_match()
     {
-        var set = WithDecisions(DecisionMatch.First, Rule("a", "spam.noul >= 0.5", "trash"), Rule("b", "category.confidence >= 0.5", "archive"));
+        var set = WithDecisions(DecisionMatch.First, Removing("a", "spam.noul >= 0.5", RemoveMode.Delete), Removing("b", "category.confidence >= 0.5", RemoveMode.Archive));
 
         Assert.Equal(["b"], Names(DecisionEngine.Evaluate(set, Of(("category", Choice("other", 0.6))))));
     }
@@ -103,7 +114,7 @@ public sealed class DecisionEngineTests
             DecisionMatch.All,
             Rule("label", "category.confidence >= 0.7", "label:promo"),
             Rule("tie", "category.confidence >= 0.7", "label:promo", "mark_read"),
-            Rule("no", "category.confidence >= 0.9", "archive"),
+            Removing("no", "category.confidence >= 0.9", RemoveMode.Archive),
             Rule(null!, "spam.noul < 0.5", "star"));
 
         var decisions = DecisionEngine.Evaluate(set, Of(("category", Choice("promo", 0.7)), ("spam", Noul(0.2))));
@@ -125,7 +136,7 @@ public sealed class DecisionEngineTests
     [Fact]
     public void Allow_protected_is_carried_from_the_rule()
     {
-        var set = WithDecisions(DecisionMatch.First, new DecisionRule { When = "spam.noul >= 0.9", Actions = ["trash"], AllowProtected = true });
+        var set = WithDecisions(DecisionMatch.First, new DecisionRule { When = "spam.noul >= 0.9", Remove = RemoveMode.Delete, AllowProtected = true });
 
         Assert.True(Assert.Single(DecisionEngine.Evaluate(set, Of(("spam", Noul(0.95))))).AllowProtected);
     }
@@ -167,33 +178,58 @@ public sealed class ActionPlanTests
     private static Decision D(string name, bool allowProtected, params string[] actions)
         => new(0, name, [.. actions.Select(RuleAction.Parse)], allowProtected);
 
-    [Fact]
-    public void Actions_are_deduplicated_and_ordered_with_trash_last()
-    {
-        var plan = ActionPlan.Create(Plain, [D("a", false, "trash", "label:x", "mark_read"), D("b", false, "label:x", "star", "archive", "label:y")], allowDelete: true);
+    private static Decision R(string name, RemoveMode remove, bool allowProtected = false, params string[] actions)
+        => new(0, name, [.. actions.Select(RuleAction.Parse)], allowProtected, remove, $"nullbox/review/test/{name}");
 
-        Assert.Equal(["label:x", "label:y", "star", "mark_read", "archive", "trash"], plan.Actions.Select(a => a.ToString()));
+    [Fact]
+    public void Actions_are_deduplicated_and_ordered_labels_then_star_then_read()
+    {
+        var plan = ActionPlan.Create(Plain, [D("a", false, "mark_read", "label:x"), D("b", false, "label:x", "star", "label:y")]);
+
+        Assert.Equal(["label:x", "label:y", "star", "mark_read"], plan.Describe());
+        Assert.Equal(PlannedRemoval.None, plan.Removal);
         Assert.Empty(plan.Skipped);
         Assert.True(plan.HasChanges);
     }
 
     [Fact]
-    public void With_the_delete_lock_on_trash_archives_instead_and_is_recorded_as_blocked()
+    public void Archive_adds_the_review_label_and_removes_last()
     {
-        var plan = ActionPlan.Create(Plain, [D("junk", false, "label:junk", "trash")]);
+        var plan = ActionPlan.Create(Plain, [R("junk", RemoveMode.Archive, actions: "mark_read")]);
 
-        Assert.Equal(["label:junk", "archive"], plan.Actions.Select(a => a.ToString()));
-        var skipped = Assert.Single(plan.Skipped);
-        Assert.Equal(("trash", "junk", ActionPlan.DeleteLockedReason), (skipped.Action.ToString(), skipped.Decision, skipped.Reason));
+        Assert.Equal(["label:nullbox/review/test/junk", "mark_read", "archive"], plan.Describe());
+        Assert.Empty(plan.Skipped);
     }
 
     [Fact]
-    public void A_blocked_trash_and_an_archive_give_one_archive()
+    public void Delete_trashes_when_the_lock_is_lifted()
     {
-        var plan = ActionPlan.Create(Plain, [D("a", false, "archive"), D("b", false, "trash")]);
+        var plan = ActionPlan.Create(Plain, [R("junk", RemoveMode.Delete)], allowDelete: true);
 
-        Assert.Equal(["archive"], plan.Actions.Select(a => a.ToString()));
-        Assert.Single(plan.Skipped);
+        Assert.Equal(PlannedRemoval.Trash, plan.Removal);
+        Assert.Equal(["label:nullbox/review/test/junk", "delete"], plan.Describe());
+        Assert.Empty(plan.Skipped);
+    }
+
+    [Fact]
+    public void While_deletes_are_locked_delete_archives_and_is_recorded_as_skipped()
+    {
+        var plan = ActionPlan.Create(Plain, [R("junk", RemoveMode.Delete, actions: "label:x")]);
+
+        Assert.Equal(["label:x", "label:nullbox/review/test/junk", "archive"], plan.Describe());
+        var skipped = Assert.Single(plan.Skipped);
+        Assert.Equal(("delete", "junk", ActionPlan.DeleteLockedReason), (skipped.Action, skipped.Decision, skipped.Reason));
+    }
+
+    [Fact]
+    public void The_gentlest_removal_wins_when_several_decisions_match()
+    {
+        var plan = ActionPlan.Create(Plain, [R("trusted", RemoveMode.Delete), R("trial", RemoveMode.Archive)], allowDelete: true);
+
+        Assert.Equal(PlannedRemoval.Archive, plan.Removal);
+        Assert.Equal(["label:nullbox/review/test/trusted", "label:nullbox/review/test/trial", "archive"], plan.Describe());
+        var skipped = Assert.Single(plan.Skipped);
+        Assert.Equal(("delete", "trusted", ActionPlan.GentlerDecisionReason), (skipped.Action, skipped.Decision, skipped.Reason));
     }
 
     [Fact]
@@ -208,36 +244,48 @@ public sealed class ActionPlanTests
     [InlineData(GmailLabels.Important)]
     public void Protected_mail_is_never_hidden_but_can_still_be_labelled(string protectedLabel)
     {
-        var plan = ActionPlan.Create(Message(GmailLabels.Inbox, protectedLabel), [D("cleanup", false, "label:promo", "star", "mark_read", "archive", "trash")]);
+        var plan = ActionPlan.Create(
+            Message(GmailLabels.Inbox, protectedLabel),
+            [R("cleanup", RemoveMode.Delete, actions: ["label:promo", "star", "mark_read"])],
+            allowDelete: true);
 
-        Assert.Equal(["label:promo", "star"], plan.Actions.Select(a => a.ToString()));
-        Assert.Equal(["mark_read", "archive", "trash"], plan.Skipped.Select(s => s.Action.ToString()));
+        Assert.Equal(["label:promo", "star"], plan.Describe());
+        Assert.Equal(["mark_read", "delete"], plan.Skipped.Select(s => s.Action));
         Assert.All(plan.Skipped, s => Assert.Equal(("cleanup", ActionPlan.ProtectedReason), (s.Decision, s.Reason)));
     }
 
     [Fact]
     public void Allow_protected_on_the_decision_lets_it_act_on_protected_mail()
     {
-        var message = Message(GmailLabels.Starred);
+        var plan = ActionPlan.Create(Message(GmailLabels.Starred), [R("explicit", RemoveMode.Archive, allowProtected: true), R("implicit", RemoveMode.Delete)]);
 
-        var plan = ActionPlan.Create(message, [D("explicit", true, "archive"), D("implicit", false, "trash")]);
-
-        Assert.Equal(["archive"], plan.Actions.Select(a => a.ToString()));
-        Assert.Equal("trash", Assert.Single(plan.Skipped).Action.ToString());
+        Assert.Equal(["label:nullbox/review/test/explicit", "archive"], plan.Describe());
+        Assert.Equal(("delete", ActionPlan.ProtectedReason), (Assert.Single(plan.Skipped).Action, plan.Skipped[0].Reason));
     }
 }
 
 public sealed class ActionExecutorTests
 {
+    private static ActionPlan Plan(PlannedRemoval removal, params string[] actions) => new([.. actions.Select(RuleAction.Parse)], removal, []);
+
     [Fact]
-    public async Task Labels_star_read_and_archive_go_in_one_modify_then_trash()
+    public async Task Labels_star_read_and_archive_go_in_one_modify()
+    {
+        var gmail = new Inbox.FakeInboxGmail();
+
+        await ActionExecutor.ApplyAsync(gmail, "m1", Plan(PlannedRemoval.Archive, "label:promo", "star", "mark_read"), default);
+
+        Assert.Equal(["label:promo", "modify:m1:+Label_promo,STARRED:-UNREAD,INBOX"], gmail.Changes);
+    }
+
+    [Fact]
+    public async Task Trash_runs_after_the_labels_are_on()
     {
         var gmail = new Inbox.FakeInboxGmail { AllowDelete = true };
-        var plan = new ActionPlan([.. new[] { "label:promo", "star", "mark_read", "archive", "trash" }.Select(RuleAction.Parse)], []);
 
-        await ActionExecutor.ApplyAsync(gmail, "m1", plan, default);
+        await ActionExecutor.ApplyAsync(gmail, "m1", Plan(PlannedRemoval.Trash, "label:review"), default);
 
-        Assert.Equal(["label:promo", "modify:m1:+Label_promo,STARRED:-UNREAD,INBOX", "trash:m1"], gmail.Changes);
+        Assert.Equal(["label:review", "modify:m1:+Label_review:-", "trash:m1"], gmail.Changes);
     }
 
     [Fact]
@@ -245,9 +293,9 @@ public sealed class ActionExecutorTests
     {
         var gmail = new Inbox.FakeInboxGmail { AllowDelete = true };
 
-        await ActionExecutor.ApplyAsync(gmail, "m1", new ActionPlan([RuleAction.Parse("trash")], []), default);
+        await ActionExecutor.ApplyAsync(gmail, "m1", Plan(PlannedRemoval.Trash), default);
         await ActionExecutor.ApplyAsync(gmail, "m2", ActionPlan.Empty, default);
-        await ActionExecutor.ApplyAsync(gmail, "m3", new ActionPlan([RuleAction.Parse("archive")], []), default);
+        await ActionExecutor.ApplyAsync(gmail, "m3", Plan(PlannedRemoval.Archive), default);
 
         Assert.Equal(["trash:m1", "modify:m3:+:-INBOX"], gmail.Changes);
     }
