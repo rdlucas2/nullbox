@@ -1,0 +1,24 @@
+# Keep the build context small and secret-free.
+.git
+.github
+.vs
+.vscode
+**/bin
+**/obj
+**/TestResults
+**/*.user
+tests/
+docs/
+data/
+secrets/
+.env
+.env.*
+credentials.json
+token*.json
+client_secret*.json
+*.pem
+*.key
+docker-compose*.yml
+Dockerfile
+.dockerignore
+*.md
