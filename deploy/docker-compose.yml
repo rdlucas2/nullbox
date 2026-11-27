@@ -1,0 +1,61 @@
+# Production compose for the home server: `cd deploy && cp .env.example .env && docker compose up -d --build`.
+# See docs/deploy.md. Differences from the dev compose in the repo root:
+#   - publishes on one LAN interface only (NULLBOX_BIND is required, never 0.0.0.0 by default),
+#   - mounts ./backups for the nightly backup (deploy/backup.sh), and
+#   - caps memory at 512 MB with workstation GC.
+name: nullbox
+
+services:
+  nullbox:
+    # Build from source by default. To pull a published image instead, set NULLBOX_IMAGE in .env and use
+    # `docker compose pull && docker compose up -d` (no --build).
+    image: ${NULLBOX_IMAGE:-nullbox:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: nullbox
+    restart: unless-stopped
+    ports:
+      # LAN interface only. Remote access goes through Tailscale/WireGuard on the server, never a router port
+      # forward: /login and /hangfire must not be reachable from the internet.
+      - "${NULLBOX_BIND:?Set NULLBOX_BIND in deploy/.env to the server's LAN IP (see docs/deploy.md)}:${NULLBOX_PORT:-8480}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      NULLBOX_UID: ${NULLBOX_UID:-1654}
+      NULLBOX_GID: ${NULLBOX_GID:-}
+      NULLBOX_BACKUP_DIR: /backups
+      NULLBOX_BACKUP_KEEP: ${NULLBOX_BACKUP_KEEP:-14}
+      # Workstation GC keeps the heap small; the app idles well under the 512 MB cap.
+      DOTNET_gcServer: "0"
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    mem_limit: ${NULLBOX_MEM_LIMIT:-512m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional HTTPS and a friendly hostname. Uncomment, write a Caddyfile next to this file, and turn on
+  # forwarded headers in .env (Nullbox__ForwardedHeaders__Enabled=true, Nullbox__ForwardedHeaders__KnownProxies__0=<caddy's IP>).
+  # Still LAN or tailnet only.
+  #
+  # caddy:
+  #   image: caddy:2
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${NULLBOX_BIND}:443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - ./caddy-data:/data
+  #   depends_on:
+  #     - nullbox

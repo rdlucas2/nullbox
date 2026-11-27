@@ -17,6 +17,7 @@ and the GitHub issues for the work breakdown. Gmail actions are a port of [email
 | `src/Nullbox.Data` | EF Core + SQLite (`{data}/nullbox.db`): rule-set versions, migrations applied on start |
 | `src/Nullbox.Gmail` | Gmail API implementation |
 | `src/Nullbox.Jev` | TypeSafe Jev HTTP client |
+| `deploy/` | Server compose file, `backup.sh`/`restore.sh` and their test ([docs/deploy.md](docs/deploy.md)) |
 | `tools/Nullbox.Auth` | `nullbox-auth`: one-time Google consent on a PC, writes `token.json` ([docs/gmail-auth.md](docs/gmail-auth.md)) |
 | `tests/Nullbox.Tests` | xUnit tests (unit + in-process integration via `WebApplicationFactory`) |
 
@@ -55,6 +56,7 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Hangfire:Storage` | `SQLite` | `SQLite` (file `hangfire.db` in the data directory) or `InMemory` (tests). |
 | `Nullbox:Hangfire:WorkerCount` | `2` | Hangfire worker threads. |
 | `Nullbox:Hangfire:DashboardPath` | `/hangfire` | Dashboard URL, behind the admin login. |
+| `Nullbox:ForwardedHeaders:Enabled` / `KnownProxies` | off / none | Trust `X-Forwarded-*` from these proxy IPs, only if a proxy is added later ([docs/deploy.md](docs/deploy.md)). |
 | `Nullbox:Jobs:HeartbeatCron` | `*/5 * * * *` | No-op heartbeat job (UTC) that proves the scheduler runs. |
 | `Nullbox:Jobs:InboxPollCron` | `*/5 * * * *` | How often the `inbox-poll` job checks Gmail for new inbox mail (UTC). |
 | `Nullbox:Jobs:InboxResyncWindow` | `2d` | Gmail `newer_than:` window listed on first run and when history has expired. |
@@ -101,6 +103,8 @@ docker compose ps                    # STATUS shows (healthy)
 - Put emailBlaster's `credentials.json` and `token.json` in `./data/google/`, or upload the token at
   `/settings/gmail` after signing in. See [docs/gmail-auth.md](docs/gmail-auth.md). `./data` and `.env`
   are gitignored and excluded from the build context.
+- On the home server, use `deploy/docker-compose.yml`. It publishes on the LAN IP only, keeps nightly backups and
+  caps memory at 512 MB. See [docs/deploy.md](docs/deploy.md) for the checklist, backup/restore, updates and remote access.
 - Without Compose: `docker build -t nullbox:local .` then
   `docker run -d -p 8480:8080 -v "$PWD/data:/data" --env-file .env nullbox:local`.
 

@@ -37,6 +37,9 @@ jobs:
       - name: Test
         run: dotnet test Nullbox.sln --no-build --configuration Release --logger "trx;LogFileName=results.trx" --results-directory TestResults
 
+      - name: Backup and restore script test
+        run: deploy/test-backup-restore.sh
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,8 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate compose file
-        run: docker compose config --quiet
+      - name: Validate compose files
+        run: |
+          docker compose config --quiet
+          # The server compose refuses to start without a LAN bind address.
+          if docker compose -f deploy/docker-compose.yml config --quiet 2>/dev/null; then echo "deploy compose must require NULLBOX_BIND"; exit 1; fi
+          NULLBOX_BIND=192.0.2.10 docker compose -f deploy/docker-compose.yml config --quiet
 
       - name: Build image (no push)
         run: docker build --tag nullbox:ci .
@@ -70,6 +77,9 @@ jobs:
           # The app itself runs unprivileged as 1654 and owns what it wrote.
           test "$(docker exec nullbox-ci awk '/^Uid:/{print $2}' /proc/1/status)" = "1654"
           test "$(stat -c %u data/keys)" = "1654"
+          # The backup CLI works inside the image as the app user.
+          docker exec --user 1654 nullbox-ci dotnet Nullbox.Web.dll --backup --dest /tmp/nullbox-backups
+          docker exec nullbox-ci test -f "$(docker exec nullbox-ci sh -c 'ls -d /tmp/nullbox-backups/nullbox-*')/hangfire.db"
 
       - name: Container logs
         if: always()

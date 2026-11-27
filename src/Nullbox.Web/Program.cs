@@ -4,6 +4,7 @@ using Nullbox.Data;
 using Nullbox.Jev;
 using Nullbox.Web;
 using Nullbox.Web.Auth;
+using Nullbox.Web.Backup;
 using Nullbox.Web.Hosting;
 using Nullbox.Web.Inbox;
 using Nullbox.Web.Settings;
@@ -17,11 +18,17 @@ if (args is [HealthProbe.Flag, ..])
     return await HealthProbe.RunAsync(uri);
 }
 
+if (args is [DataBackup.Flag, ..])
+{
+    return await DataBackup.RunCliAsync(args, Environment.GetEnvironmentVariable, Console.Out, Console.Error, DateTimeOffset.UtcNow);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddNullboxOptions(builder.Configuration);
 builder.Services.AddNullboxDataProtection(builder.Configuration);
 builder.Services.AddHealthChecks();
+builder.Services.AddNullboxForwardedHeaders(builder.Configuration);
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
 builder.Services.AddNullboxGmail(builder.Configuration);
@@ -32,6 +39,7 @@ builder.Services.AddNullboxUi();
 
 var app = builder.Build();
 
+app.UseNullboxForwardedHeaders();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
