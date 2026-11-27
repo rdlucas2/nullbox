@@ -119,6 +119,7 @@ The editor at `/rules/<name>` (or `/rules/new`) has a tab for each part of the d
   will still archive. Delete rules without a confidence threshold, or with one below 0.8, get a warning.
 - **JSON**: the document as it would be saved, editable. Applying edited JSON updates the other tabs; JSON that
   fails the checks is not applied. Beside it is the exact request Jev would get for the sample email.
+- **Test**: run the draft over real messages; see [Testing a rule set](#testing-a-rule-set).
 - **Versions**: every saved version, with a line diff against the one before it, and a button that loads an old
   version back into the editor (save it to make it the newest version).
 
@@ -126,3 +127,22 @@ Validation errors (schema and references, with their JSON paths) are listed unde
 adds a version but doesn't activate it; **Activate** and **Switch to live / dry run** ask for confirmation and are
 disabled while there are unsaved changes. Switching modes saves the active version with the new mode and activates
 that. Leaving the page with unsaved changes asks first. New rule sets made in the editor start as dry runs.
+
+## Testing a rule set
+
+The editor's **Test** tab tests the draft as it stands, saved or not. `/test` tests the newest saved version of a
+rule set you pick. Either way:
+
+1. Pick the messages: the newest in the inbox, a Gmail search (e.g. `from:shop newer_than:7d`), or a sample of the
+   messages in the decision log for a rule set. Up to `Nullbox:Tester:MaxMessages` (25) per run.
+2. **Check cost** reads the messages and shows how many Jev calls and input tokens the run would take at most, next
+   to today's Jev budget. A run that would go over the day's tokens or the hour's calls is refused before any call.
+3. **Run in dry run** asks Jev and shows, for each message, the state sent, Jev's answers, the decisions that
+   matched and the actions they would take.
+
+Nothing is changed in Gmail: the tester only has read access to it, and records nothing in the decision log. Jev's
+answers are cached like the pipeline's, so running the same draft again over the same messages costs nothing.
+
+With **Compare with the active version** ticked, each message also shows what the active version decides, and rows
+where the actions differ are highlighted. The active version's verdict is taken from the decision log when it has
+already decided that message; otherwise Jev is asked for it too, which the cost check counts.

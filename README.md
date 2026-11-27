@@ -42,8 +42,9 @@ light/dark toggle (follows the system setting until you switch it) and a sign-ou
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
 token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports rule sets
-([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test, Audit and Jobs are placeholders that later milestones fill
-in; Jobs links to the Hangfire dashboard meanwhile.
+([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test (`/test`, and the Test tab in the editor) runs a rule set over
+real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)). Audit and Jobs are
+placeholders that later milestones fill in; Jobs links to the Hangfire dashboard meanwhile.
 
 ## Configuration
 
@@ -66,6 +67,7 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Pipeline:MaxMessagesPerHour` | `100` | Most messages changed in any rolling hour; later live decisions are only recorded. |
 | `Nullbox:Pipeline:MaxAttempts` | `4` | Failed attempts before a message is recorded as poison and not retried. |
 | `Nullbox:Pipeline:AuthRetryDelay` | `01:00:00` | Wait before retrying when Gmail or Jev needs re-authorizing. |
+| `Nullbox:Tester:MaxMessages` | `25` | Most messages one rule-tester run evaluates. |
 | `Nullbox:Audit:RetentionDays` | `90` | Decision records older than this are deleted by the daily purge; `0` keeps them forever. |
 | `Nullbox:Audit:PurgeCron` | `17 3 * * *` | When the purge runs (UTC). |
 | `Nullbox:Audit:StoredBodyChars` | `280` | How much of the body sent to Jev a record keeps; `0` keeps none. Full bodies are never stored. |

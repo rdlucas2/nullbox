@@ -1,6 +1,64 @@
 @page "/test"
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Components.Rules
+@inject IRuleSetStore Store
 
 <PageTitle>Test · nullbox</PageTitle>
 
 <MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Test</MudText>
-<MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Run a draft rule set against recent messages in dry run and compare its decisions with the active version. Arrives with M3-16.</MudAlert>
+
+@if (_summaries is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_summaries.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" data-testid="test-no-rule-sets">There are no rule sets to test yet. <MudLink Href="/rules/new">Make one</MudLink>.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Spacing="3">
+        <label class="mud-typography-body2">
+            Rule set
+            <select value="@_name" @onchange="PickAsync" data-testid="test-rule-set">
+                @foreach (var summary in _summaries)
+                {
+                    <option value="@summary.Name">@summary.Name</option>
+                }
+            </select>
+        </label>
+        @if (_version is { } version)
+        {
+            <MudText Typo="Typo.body2" data-testid="test-version">Testing v@(version.Version), the newest version@(version.IsActive ? ", which is active" : string.Empty).</MudText>
+            <MudLink Href="@($"/rules/{Uri.EscapeDataString(version.Name)}")">Edit</MudLink>
+        }
+    </MudStack>
+    @if (_version is not null)
+    {
+        @* Keyed so picking another rule set starts with a fresh panel. *@
+        <RuleTestPanel @key="_version.Key" Draft="@_version.Document" />
+    }
+}
+
+@code {
+    private IReadOnlyList<RuleSetSummary>? _summaries;
+    private string? _name;
+    private RuleSetVersion? _version;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _summaries = await Store.ListAsync();
+        if (_summaries.Count > 0)
+        {
+            await LoadAsync(_summaries[0].Name);
+        }
+    }
+
+    private Task PickAsync(ChangeEventArgs e) => LoadAsync((string)e.Value!);
+
+    private async Task LoadAsync(string name)
+    {
+        _name = name;
+        _version = (await Store.ListVersionsAsync(name)).FirstOrDefault();
+    }
+}
