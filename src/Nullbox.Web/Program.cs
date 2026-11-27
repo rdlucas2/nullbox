@@ -2,6 +2,7 @@ using Nullbox.Core;
 using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Hosting;
+using Nullbox.Web.Settings;
 
 if (args is [HealthProbe.Flag, ..])
 {
@@ -18,6 +19,7 @@ builder.Services.AddNullboxDataProtection(builder.Configuration);
 builder.Services.AddHealthChecks();
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
+builder.Services.AddNullboxGmail(builder.Configuration);
 
 var app = builder.Build();
 
@@ -29,6 +31,7 @@ app.MapHealthChecks("/healthz");
 app.MapGet("/", () => Results.Ok(new { name = AppInfo.Name, version = AppInfo.Version }));
 app.MapAdminAuthEndpoints();
 app.MapNullboxDashboard();
+app.MapGmailSettings();
 
 app.WarnIfAdminPasswordMissing();
 
