@@ -46,11 +46,25 @@ namespace Nullbox.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("Confidence")
+                        .HasColumnType("REAL");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DecisionsJson")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InputsHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LabelsJson")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("MessageId")
@@ -77,8 +91,19 @@ namespace Nullbox.Data.Migrations
                         .HasMaxLength(96)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("RuleSetName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RuleSetVersion")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SkippedJson")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StateJson")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -88,6 +113,8 @@ namespace Nullbox.Data.Migrations
                     b.HasIndex("MessageId", "RuleSetKey");
 
                     b.HasIndex("Outcome", "CreatedUtc");
+
+                    b.HasIndex("RuleSetName", "RuleSetVersion");
 
                     b.ToTable("decisions", (string)null);
                 });

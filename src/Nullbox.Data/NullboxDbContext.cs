@@ -49,7 +49,11 @@ public sealed class NullboxDbContext(DbContextOptions<NullboxDbContext> options)
             e.Property(d => d.Mode).HasConversion<string>().HasMaxLength(16);
             e.Property(d => d.Outcome).HasConversion<string>().HasMaxLength(16);
             e.Property(d => d.Model).HasMaxLength(128);
+            e.Property(d => d.RuleSetName).HasMaxLength(64).IsRequired();
+            e.Property(d => d.InputsHash).HasMaxLength(64);
+            e.Property(d => d.Error).HasMaxLength(2000);
             e.HasIndex(d => new { d.MessageId, d.RuleSetKey });
+            e.HasIndex(d => new { d.RuleSetName, d.RuleSetVersion });
             e.HasIndex(d => new { d.Outcome, d.CreatedUtc });
             e.HasIndex(d => d.CreatedUtc);
         });
@@ -100,6 +104,26 @@ public sealed class DecisionRow
     public required string AnswersJson { get; set; }
 
     public DateTime CreatedUtc { get; set; }
+
+    /// <summary>Name part of <see cref="RuleSetKey"/>, for filtering.</summary>
+    public string RuleSetName { get; set; } = string.Empty;
+
+    /// <summary>Version part of <see cref="RuleSetKey"/>, for filtering.</summary>
+    public int RuleSetVersion { get; set; }
+
+    /// <summary>SHA-256 of the full state sent to Jev.</summary>
+    public string? InputsHash { get; set; }
+
+    /// <summary>The state sent to Jev with the body cut short; never the full body.</summary>
+    public string? StateJson { get; set; }
+
+    /// <summary>JSON array of the message's Gmail labels when it was evaluated.</summary>
+    public string? LabelsJson { get; set; }
+
+    /// <summary>Jev's least sure answer, 0 to 1.</summary>
+    public double? Confidence { get; set; }
+
+    public string? Error { get; set; }
 }
 
 /// <summary>Failed attempts for a message; <see cref="Poison"/> once it is given up on.</summary>
