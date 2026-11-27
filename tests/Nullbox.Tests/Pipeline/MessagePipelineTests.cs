@@ -87,10 +87,10 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_dry_run_rule_in_a_live_rule_set_records_the_match_and_changes_nothing()
+    public async Task Dry_run_rules_in_a_live_rule_set_record_their_matches_and_change_nothing()
     {
         var promo = Promo(RuleSetMode.Live);
-        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Remove is null ? d : d with { Remove = RemoveMode.DryRun })] });
+        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Actions.Contains("none") ? d : d with { Remove = RemoveMode.DryRun })] });
         _gmail.Add("m1");
 
         await Pipeline().ProcessAsync("m1", default);
@@ -98,11 +98,27 @@ public sealed class MessagePipelineTests : IAsyncLifetime
         Assert.Empty(_gmail.Changes);
         var record = Assert.Single(await _db.Log().ListAsync("m1"));
         Assert.Equal((RuleSetMode.Live, DecisionOutcome.NoChange), (record.Mode, record.Outcome));
-        Assert.Equal(["Archive confident promos"], record.Decisions);
+        Assert.Equal(["Archive confident promos", "Label likely promos"], record.Decisions);
         Assert.Empty(record.Actions);
-        Assert.Equal(
-            ["label:nullbox/promo (Archive confident promos): the rule is in dry run; recorded only", "mark_read (Archive confident promos): the rule is in dry run; recorded only"],
-            record.Skipped);
+        Assert.All(record.Skipped, s => Assert.EndsWith("the rule is in dry run; recorded only", s, StringComparison.Ordinal));
+        Assert.Contains("mark_read (Archive confident promos): the rule is in dry run; recorded only", record.Skipped);
+    }
+
+    [Fact]
+    public async Task A_rule_on_trial_does_not_stop_the_rule_below_it_from_acting()
+    {
+        var promo = Promo(RuleSetMode.Live);
+        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Remove == RemoveMode.Archive ? d with { Remove = RemoveMode.DryRun } : d)] });
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Equal(["label:nullbox/promo", "modify:m1:+Label_nullbox/promo:-"], _gmail.Changes);
+        var record = Assert.Single(await _db.Log().ListAsync("m1"));
+        Assert.Equal(DecisionOutcome.Applied, record.Outcome);
+        Assert.Equal(["Archive confident promos", "Label likely promos"], record.Decisions);
+        Assert.Equal(["label:nullbox/promo"], record.Actions);
+        Assert.Contains("mark_read (Archive confident promos): the rule is in dry run; recorded only", record.Skipped);
     }
 
     [Fact]

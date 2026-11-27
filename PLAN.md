@@ -65,9 +65,11 @@ tokens or a small `nullbox-auth` loopback helper. No web OAuth flow / HTTPS redi
 `token_filters.json` (`gmail.settings.basic`), as in emailBlaster.
 
 ### Safety defaults
-- **Archive first** (decided 2026-11-27, replaces dry-run-by-default): a new rule acts right away, but only archives,
-  adding a review label `nullbox/review/<rule-set>/<rule>`. Each rule has an Archive | Delete switch, Archive by
-  default; flipping it to Delete is an explicit, confirmed UI action (#36). `dry_run` stays available.
+- **Promote each rule** (decided 2026-11-27): each rule has a Dry run | Keep in inbox | Archive | Delete switch, and
+  new rules start on **Dry run**: they record what they match, change nothing and never take the first match from the
+  rules below them. Promote a rule to Archive (adds the review label `nullbox/review/<rule-set>/<rule>`) once its
+  dry runs look right, then to Delete, which is an explicit, confirmed UI action (#36, #45). New rule sets are live,
+  so promoting a rule is the only switch to flip; a whole rule set can still be a `dry_run`.
 - **App-wide delete lock** `Nullbox:Gmail:AllowDelete`, off by default: Gmail's Trash and permanent delete are refused
   for every caller, and Delete rules archive instead (#35).
 - Delete means Trash (recoverable 30 days); permanent delete is never available to rules, and for bulk jobs it is

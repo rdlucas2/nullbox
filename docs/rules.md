@@ -73,8 +73,9 @@ only delete when you have promoted it on purpose.
 | `delete` | Moves to Trash (Gmail keeps it 30 days). Rules never delete permanently. |
 
 Start a rule on `dry_run` and watch what it matches in the audit log. Promote it to `archive` and look through its
-review label in Gmail, then to `delete` once you trust it. A dry-run rule still counts as a match, so with
-`match: first` it stops later rules, just as it will once it is promoted.
+review label in Gmail, then to `delete` once you trust it. A dry-run rule is recorded but never takes the first
+match, so with `match: first` the rules below it still act as before: adding a rule on trial changes nothing. The audit
+log shows the dry-run match next to the rule that did act, which is what the new rule will take over once promoted.
 
 The review label is named after the rule (lowercase, `-` between words, accents dropped), or `rule-<n>` for an unnamed
 rule, so name your rules to keep the label when you reorder them. Two rules that remove mail can't share a label.
