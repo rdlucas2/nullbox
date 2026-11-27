@@ -1,0 +1,39 @@
+@page "/"
+@inject DashboardStatusProvider Status
+
+<PageTitle>Dashboard · nullbox</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4" Tag="@("h1")">Dashboard</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Disabled="_loading">Refresh</MudButton>
+</MudStack>
+
+@if (_snapshot is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <StatusCards Snapshot="_snapshot" />
+}
+
+@code {
+    private DashboardSnapshot? _snapshot;
+    private bool _loading;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _snapshot = await Status.GetAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

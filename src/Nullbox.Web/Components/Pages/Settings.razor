@@ -1,0 +1,11 @@
+@page "/settings"
+
+<PageTitle>Settings · nullbox</PageTitle>
+
+<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Settings</MudText>
+<MudList T="string">
+    <MudListItem T="string" Icon="@Icons.Material.Filled.Email">
+        <a href="/settings/gmail" target="_self">Gmail connection</a>: upload a new token.json or check which scopes it has.
+    </MudListItem>
+</MudList>
+<MudText Typo="Typo.body2" Class="mt-2">Feature flags, the Jev budget and retention settings arrive with M3-17.</MudText>

@@ -1,0 +1,132 @@
+@using Nullbox.Core.Gmail
+
+<MudGrid>
+    <MudItem xs="12" sm="6" lg="3">
+        <MudCard Outlined="true" data-card="gmail">
+            <MudCardHeader>
+                <CardHeaderContent><MudText Typo="Typo.subtitle1">Gmail</MudText></CardHeaderContent>
+                <CardHeaderActions><MudChip T="string" Size="Size.Small" Color="GmailColor" data-testid="gmail-state">@GmailLabel</MudChip></CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (Snapshot.Gmail is { } g && g.State == GmailAuthState.Ready)
+                {
+                    <MudText Typo="Typo.body2">Scopes: @(g.Scopes.Count == 0 ? "unknown" : string.Join(", ", g.Scopes.Select(ShortScope)))</MudText>
+                    <MudText Typo="Typo.body2">Access token: @(g.AccessTokenExpiry is { } e ? $"valid until {Local(e)}" : "refreshes on first use")</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2">@(Snapshot.Gmail?.Message ?? "Gmail is not connected yet.")</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-1"><a href="/settings/gmail" target="_self">Upload a token.json</a> to reauthorize.</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" lg="3">
+        <MudCard Outlined="true" data-card="poll">
+            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.subtitle1">Last inbox poll</MudText></CardHeaderContent></MudCardHeader>
+            <MudCardContent>
+                @if (Snapshot.InboxPoll is { } p)
+                {
+                    <MudText Typo="Typo.h6" data-testid="poll-last">@(p.LastRunUtc is { } at ? Ago(at) : "Not run yet")</MudText>
+                    <MudText Typo="Typo.body2">@(p.LastState ?? "No result yet")@(p.NextRunUtc is { } next ? $" · next {Local(next)}" : "")</MudText>
+                    @if (!string.IsNullOrEmpty(p.Error))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Error">@p.Error</MudText>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" data-testid="poll-last">The inbox poll is not scheduled yet.</MudText>
+                }
+                <MudText Typo="Typo.caption">Scheduler heartbeat: @(Snapshot.Heartbeat?.LastRunUtc is { } hb ? Ago(hb) : "not run yet")</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" lg="3">
+        <MudCard Outlined="true" data-card="queue">
+            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.subtitle1">Queue</MudText></CardHeaderContent></MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.h6" data-testid="queue-depth">@Snapshot.Queues.Enqueued waiting</MudText>
+                <MudText Typo="Typo.body2">@Snapshot.Queues.Processing running · @Snapshot.Queues.Failed failed · @Snapshot.Queues.Succeeded done</MudText>
+                @foreach (var (name, length) in Snapshot.Queues.ByQueue.OrderBy(q => q.Key, StringComparer.Ordinal))
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">@name: @length</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" lg="3">
+        <MudCard Outlined="true" data-card="jev">
+            <MudCardHeader>
+                <CardHeaderContent><MudText Typo="Typo.subtitle1">Jev budget</MudText></CardHeaderContent>
+                <CardHeaderActions>
+                    @if (Snapshot.JevBudget?.OverBudget == true)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error">Over budget</MudChip>
+                    }
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (Snapshot.JevBudget is { } b)
+                {
+                    <MudText Typo="Typo.h6" data-testid="jev-tokens">@b.InputTokensToday.ToString("N0") / @b.MaxInputTokensPerDay.ToString("N0") tokens today</MudText>
+                    <MudProgressLinear Value="Percent(b.InputTokensToday, b.MaxInputTokensPerDay)" Color="@(b.OverBudget ? Color.Error : Color.Primary)" Class="my-2" />
+                    <MudText Typo="Typo.body2">@b.RequestsLastHour / @b.MaxRequestsPerHour requests in the last hour</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" data-testid="jev-tokens">Jev is not set up.</MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12">
+        <MudCard Outlined="true" data-card="decisions">
+            <MudCardHeader><CardHeaderContent><MudText Typo="Typo.subtitle1">Recent decisions</MudText></CardHeaderContent></MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2">Decisions show up here once the message pipeline and audit log are running.</MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired]
+    public DashboardSnapshot Snapshot { get; set; } = null!;
+
+    private string GmailLabel => Snapshot.Gmail?.State switch
+    {
+        GmailAuthState.Ready => "Connected",
+        GmailAuthState.ReauthorizationRequired => "Reauthorize",
+        GmailAuthState.Invalid => "Invalid token",
+        _ => "Not connected",
+    };
+
+    private Color GmailColor => Snapshot.Gmail?.State switch
+    {
+        GmailAuthState.Ready => Color.Success,
+        GmailAuthState.ReauthorizationRequired or GmailAuthState.Invalid => Color.Error,
+        _ => Color.Warning,
+    };
+
+    private static string ShortScope(string scope) => scope.StartsWith("https://www.googleapis.com/auth/", StringComparison.Ordinal) ? scope[32..] : scope;
+
+    private string Ago(DateTime utc)
+    {
+        var span = Snapshot.ReadAtUtc.UtcDateTime - DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        return span.TotalSeconds < 60 ? "just now"
+            : span.TotalMinutes < 60 ? $"{(int)span.TotalMinutes} min ago"
+            : span.TotalHours < 48 ? $"{(int)span.TotalHours} h ago"
+            : $"{(int)span.TotalDays} days ago";
+    }
+
+    private static string Local(DateTimeOffset at) => at.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Local(DateTime utc) => Local(new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)));
+
+    private static double Percent(long value, long max) => max <= 0 ? 0 : Math.Min(100, 100.0 * value / max);
+}
