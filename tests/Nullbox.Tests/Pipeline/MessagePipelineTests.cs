@@ -30,7 +30,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     private MessagePipeline Pipeline()
     {
         var log = _db.Log();
-        return new(_db.RuleSets(), log, log, _gmail, _jev, Options.Create(_options), Options.Create(_gmailOptions), _db.Time, NullLogger<MessagePipeline>.Instance);
+        return new(_db.RuleSets(), _db.SavedRules(), log, log, _gmail, _jev, Options.Create(_options), Options.Create(_gmailOptions), _db.Time, NullLogger<MessagePipeline>.Instance);
     }
 
     [Fact]

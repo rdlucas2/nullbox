@@ -77,13 +77,15 @@ The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /ap
 ## Web UI
 
 Sign in at `/login` with `ADMIN_PASSWORD`; every UI page redirects there until you do. The shell is Blazor
-(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Test, Audit, Cleanup, Jobs and Settings, a
-light/dark toggle (follows the system setting until you switch it) and a sign-out button.
+(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Saved rules, Test, Audit, Cleanup, Jobs and
+Settings, a light/dark toggle (follows the system setting until you switch it) and a sign-out button.
 
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
 token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports rule sets
-([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test (`/test`, and the Test tab in the editor) runs a rule set over
+([docs/rules.md](docs/rules.md#editing-in-the-ui)). Saved rules (`/saved-rules`) keeps the fixed sender and recipient
+rules that act without Jev, with a test box for a sample From, To and Subject
+([docs/rules.md](docs/rules.md#saved-rules)). Test (`/test`, and the Test tab in the editor) runs a rule set over
 real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)).
 
 The ops pages ask before anything that changes Gmail or deletes data:
@@ -156,12 +158,14 @@ Signed in as admin: `GET /inbox/status` shows the history id, pause flag and las
 
 ## Message pipeline
 
-Each new message goes through every active rule set ([docs/rules.md](docs/rules.md)): nullbox fetches the message
+Each new message first goes through the saved rules, in order and without asking Jev
+([docs/rules.md](docs/rules.md#saved-rules)). A live saved rule with `stop` on (the default) settles the message, and
+the rule sets are skipped for it. Otherwise it goes through every active rule set ([docs/rules.md](docs/rules.md)): nullbox fetches the message
 (the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
 in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 
-- the rule set's `mode` is `live` (the default, also for new rule sets made in the editor; the example rule sets are
-  `dry_run`, which only records what would happen);
+- the rule set's (or saved rule's) `mode` is `live` (the default for rule sets, also for new rule sets made in the
+  editor; the example rule sets, and new saved rules, are `dry_run`, which only records what would happen);
 - the matching rule has been promoted past **Dry run**, which new rules start on;
 - the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.

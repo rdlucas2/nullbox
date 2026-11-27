@@ -48,6 +48,7 @@ public sealed class UiShellTests(NullboxAppFactory factory)
     [InlineData("/rules", "promo-cleanup")]
     [InlineData("/rules/new", "New rule set")]
     [InlineData("/rules/important-mail-guard", "Save as v2")]
+    [InlineData("/saved-rules", "No saved rules yet")]
     [InlineData("/test", "Test")]
     [InlineData("/audit", "Audit")]
     [InlineData("/jobs", "Open the Hangfire dashboard")]

@@ -1,5 +1,6 @@
 using Nullbox.Core;
 using Nullbox.Core.Rules;
+using Nullbox.Core.SavedRules;
 using Nullbox.Data;
 using Nullbox.Jev;
 using Nullbox.Web;
@@ -59,6 +60,7 @@ app.MapAdminAuthEndpoints();
 app.MapNullboxDashboard();
 app.MapGmailSettings();
 app.MapGet("/schemas/ruleset.schema.json", () => Results.Text(RuleSetSchema.Text, "application/schema+json"));
+app.MapGet(SavedRuleJson.SchemaUrl, () => Results.Text(SavedRuleJson.SchemaText, "application/schema+json"));
 app.MapInboxEndpoints();
 app.MapPipelineEndpoints();
 app.MapBulkEndpoints();

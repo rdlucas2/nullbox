@@ -34,7 +34,7 @@ public sealed class AuditLogTests : IAsyncLifetime
     private MessagePipeline Pipeline()
     {
         var log = _db.Log();
-        return new(_db.RuleSets(), log, log, _gmail, _jev, Options.Create(_options), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance);
+        return new(_db.RuleSets(), _db.SavedRules(), log, log, _gmail, _jev, Options.Create(_options), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance);
     }
 
     private void AddWithBody(string id, string body)
@@ -117,7 +117,7 @@ public sealed class AuditLogTests : IAsyncLifetime
         var failing = new FailingModifyGmail(_gmail);
         var log = _db.Log();
         var pipeline = new MessagePipeline(
-            _db.RuleSets(), log, log, failing, _jev, Options.Create(_options), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance);
+            _db.RuleSets(), _db.SavedRules(), log, log, failing, _jev, Options.Create(_options), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => pipeline.ProcessAsync("m1", default));
 

@@ -1,0 +1,442 @@
+@page "/saved-rules"
+@using Nullbox.Core.Pipeline
+@using Nullbox.Core.Rules
+@using Nullbox.Core.SavedRules
+@using Nullbox.Web.Ui.Rules
+@using Nullbox.Web.Ui.SavedRules
+@inject ISavedRuleStore Store
+@inject IDecisionLog Log
+@inject RuleSetCatalog Catalog
+
+<PageTitle>Saved rules · nullbox</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4" Wrap="Wrap.Wrap">
+    <MudText Typo="Typo.h4" Tag="@("h1")">Saved rules</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FileUpload" OnClick="@(() => _importing = !_importing)" data-testid="import-toggle">Import</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FileDownload" Href="/api/saved-rules/export" Target="_self" data-testid="export">Export</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="New" data-testid="new">New saved rule</MudButton>
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mb-3">
+    Fixed rules for mail that needs no judgement: a sender, a recipient and optionally a subject, and what to do with it.
+    They run in order before the Jev rule sets, without asking Jev. A live rule with Stop on settles the message, so the
+    rule sets are skipped for it. New rules start as dry runs.
+    @(Catalog.DeletesAllowed ? "The delete lock is off, so live Delete rules move mail to Trash." : "The delete lock is on, so Delete rules archive instead.")
+</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="message">@_message</MudAlert>
+}
+
+@if (_importing)
+{
+    <MudPaper Class="pa-4 mb-4" Outlined="true" data-testid="import">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Import saved rules</MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Paste an export or pick a file (see <MudLink Href="@SavedRuleJson.SchemaUrl" Target="_blank">the schema</MudLink>).
+            Rules with a name already here replace it in place; the others are added last. Nothing is saved if any rule is invalid.
+        </MudText>
+        <InputFile OnChange="ReadFileAsync" accept=".json,application/json" data-testid="import-file" />
+        <textarea class="mud-typography-body2 pa-2 mt-2" style="width: 100%; min-height: 12rem; font-family: monospace;" spellcheck="false"
+                  value="@_importJson" @onchange="@(e => _importJson = (string?)e.Value ?? string.Empty)" data-testid="import-json"></textarea>
+        @if (_importErrors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2" data-testid="import-errors">
+                Not imported:
+                <ul>@foreach (var error in _importErrors) { <li>@error</li> }</ul>
+            </MudAlert>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" Disabled="@string.IsNullOrWhiteSpace(_importJson)" OnClick="ImportAsync" data-testid="import-save">Import</MudButton>
+    </MudPaper>
+}
+
+@if (_draft is { } draft)
+{
+    <MudPaper Class="pa-4 mb-4" Outlined="true" data-testid="editor">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">@(_editing is null ? "New saved rule" : $"Edit {_editing}")</MudText>
+        <MudTabs Elevation="0" @bind-ActivePanelIndex="_tab">
+            <MudTabPanel Text="Form" data-testid="tab-form">
+                <MudStack Spacing="2" Class="mt-2">
+                    <MudTextField T="string" Label="Name" @bind-Value="draft.Name" HelperText="Lowercase letters, digits, - and _" data-testid="name" />
+                    <MudTextField T="string" Label="From" @bind-Value="draft.From" HelperText="@FromHelp" data-testid="from" />
+                    <MudTextField T="string" Label="To or Cc" @bind-Value="draft.To" HelperText="@ToHelp" data-testid="to" />
+                    <MudTextField T="string" Label="Subject contains (optional)" @bind-Value="draft.SubjectContains" data-testid="subject" />
+                    <MudTextField T="string" Label="Labels to add (comma-separated, optional)" @bind-Value="draft.Labels" data-testid="labels" />
+                    <MudStack Row="true" Wrap="Wrap.Wrap">
+                        <MudCheckBox T="bool" @bind-Value="draft.MarkRead" Label="Mark read" data-testid="mark-read" />
+                        <MudCheckBox T="bool" @bind-Value="draft.Star" Label="Star" data-testid="star" />
+                        <MudCheckBox T="bool" @bind-Value="draft.AllowProtected" Label="Also starred and important mail" data-testid="allow-protected" />
+                    </MudStack>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small" data-testid="remove-switch">
+                            <MudButton Color="@(draft.Remove is null ? Color.Primary : Color.Default)" OnClick="@(() => SetRemove(null))" data-testid="remove-keep">Keep in inbox</MudButton>
+                            <MudButton Color="@(draft.Remove == RemoveMode.Archive ? Color.Primary : Color.Default)" OnClick="@(() => SetRemove(RemoveMode.Archive))" data-testid="remove-archive">Archive</MudButton>
+                            <MudButton Color="@(draft.Remove == RemoveMode.Delete ? Color.Error : Color.Default)" OnClick="@(() => SetRemove(RemoveMode.Delete))" data-testid="remove-delete">Delete</MudButton>
+                        </MudButtonGroup>
+                        <span class="mud-typography-caption" data-testid="remove-state">@(draft.Remove switch { null => "keeps in inbox", RemoveMode.Archive => "archives", _ => "deletes" })</span>
+                    </MudStack>
+                    @if (_confirmDelete)
+                    {
+                        <MudAlert Severity="Severity.Warning" data-testid="confirm-delete">
+                            Switch this rule to Delete? Matching mail goes to Trash, and Gmail deletes it for good after 30 days.
+                            Check what it archived first: <MudLink Href="@ReviewHref(draft)" Target="_blank">its review label in Gmail</MudLink>.
+                            @if (!Catalog.DeletesAllowed)
+                            {
+                                <span> The delete lock is on (Nullbox:Gmail:AllowDelete), so it will still archive until the lock is lifted.</span>
+                            }
+                            <MudStack Row="true" Class="mt-2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="ConfirmDelete" data-testid="confirm-delete-yes">Switch to Delete</MudButton>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="@(() => _confirmDelete = false)" data-testid="confirm-delete-no">Cancel</MudButton>
+                            </MudStack>
+                        </MudAlert>
+                    }
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small" data-testid="mode-switch">
+                            <MudButton Color="@(draft.Mode == RuleSetMode.DryRun ? Color.Primary : Color.Default)" OnClick="@(() => draft.Mode = RuleSetMode.DryRun)" data-testid="mode-dry-run">Dry run</MudButton>
+                            <MudButton Color="@(draft.Mode == RuleSetMode.Live ? Color.Warning : Color.Default)" OnClick="@(() => draft.Mode = RuleSetMode.Live)" data-testid="mode-live">Live</MudButton>
+                        </MudButtonGroup>
+                        <MudSwitch T="bool" @bind-Value="draft.Stop" Label="Stop: skip the Jev rule sets when it matches" Color="Color.Primary" data-testid="stop" />
+                        <MudSwitch T="bool" @bind-Value="draft.Enabled" Label="On" Color="Color.Primary" data-testid="enabled" />
+                    </MudStack>
+                </MudStack>
+            </MudTabPanel>
+            <MudTabPanel Text="JSON" data-testid="tab-json">
+                <textarea class="mud-typography-body2 pa-2 mt-2" style="width: 100%; min-height: 14rem; font-family: monospace;" spellcheck="false"
+                          value="@_json" @onchange="@(e => _json = (string?)e.Value ?? string.Empty)" data-testid="json"></textarea>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Class="mt-1" OnClick="ApplyJson" data-testid="json-apply">Apply JSON</MudButton>
+            </MudTabPanel>
+        </MudTabs>
+        @if (_errors.Count > 0)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2" data-testid="errors">
+                Not saved:
+                <ul>@foreach (var error in _errors) { <li>@error</li> }</ul>
+            </MudAlert>
+        }
+        <MudStack Row="true" Class="mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" data-testid="save">Save</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="Close" data-testid="cancel">Cancel</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@if (_pendingRemove is { } doomed)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="confirm-remove">
+        Remove the saved rule @doomed? Mail it already handled stays as it is, and its decision log is kept.
+        <MudStack Row="true" Class="mt-2">
+            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="RemoveAsync" data-testid="confirm-remove-yes">Remove @doomed</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => _pendingRemove = null)" data-testid="confirm-remove-no">Keep it</MudButton>
+        </MudStack>
+    </MudAlert>
+}
+
+@if (_rules is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_rules.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4" data-testid="empty">No saved rules yet. Make one, or import a JSON file.</MudAlert>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" Class="mb-4" data-testid="saved-rules">
+        <thead>
+            <tr>
+                <th>On</th>
+                <th>Name</th>
+                <th>Match</th>
+                <th>Action</th>
+                <th>Mode</th>
+                <th>Hits</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (var i = 0; i < _rules.Count; i++)
+            {
+                var rule = _rules[i].Rule;
+                var index = i;
+                <tr data-testid="@($"row-{rule.Name}")">
+                    <td><MudSwitch T="bool" Value="rule.Enabled" ValueChanged="@(on => SetEnabledAsync(rule, on))" Color="Color.Primary" aria-label="@($"Turn {rule.Name} on or off")" data-testid="@($"enabled-{rule.Name}")" /></td>
+                    <td>@rule.Name</td>
+                    <td data-testid="match">@SavedRuleText.Match(rule)</td>
+                    <td data-testid="action">
+                        @SavedRuleText.Action(rule)
+                        @if (rule.Stop)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">stops</MudText>
+                        }
+                    </td>
+                    <td><MudChip T="string" Size="Size.Small" Color="@(rule.Mode == RuleSetMode.Live ? Color.Warning : Color.Default)" data-testid="mode">@(rule.Mode == RuleSetMode.Live ? "live" : "dry run")</MudChip></td>
+                    <td data-testid="hits"><MudLink Href="@SavedRuleText.AuditHref(rule)">@(_hits.GetValueOrDefault(rule.Key))</MudLink></td>
+                    <td style="white-space: nowrap;">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.ArrowUpward" Disabled="@(index == 0)" aria-label="Move up" OnClick="@(() => MoveAsync(rule, -1))" data-testid="@($"up-{rule.Name}")" />
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.ArrowDownward" Disabled="@(index == _rules.Count - 1)" aria-label="Move down" OnClick="@(() => MoveAsync(rule, 1))" data-testid="@($"down-{rule.Name}")" />
+                        <MudButton Size="Size.Small" OnClick="@(() => Edit(rule))" data-testid="@($"edit-{rule.Name}")">Edit</MudButton>
+                        <MudButton Size="Size.Small" Color="Color.Error" OnClick="@(() => _pendingRemove = rule.Name)" data-testid="@($"remove-{rule.Name}")">Remove</MudButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+<MudPaper Class="pa-4" Outlined="true" data-testid="test-box">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Test</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">Which saved rules would a message like this match, in the order they run?</MudText>
+    <MudStack Row="true" Wrap="Wrap.Wrap">
+        <MudTextField T="string" Label="From" Value="_test.From" ValueChanged="@(v => _test = _test with { From = v })" Immediate="true" data-testid="test-from" />
+        <MudTextField T="string" Label="To or Cc" Value="_test.To" ValueChanged="@(v => _test = _test with { To = v })" Immediate="true" data-testid="test-to" />
+        <MudTextField T="string" Label="Subject" Value="_test.Subject" ValueChanged="@(v => _test = _test with { Subject = v })" Immediate="true" data-testid="test-subject" />
+    </MudStack>
+    @if (!string.IsNullOrWhiteSpace(_test.From) || !string.IsNullOrWhiteSpace(_test.To))
+    {
+        var results = TestResults();
+        @if (results.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2" data-testid="test-none">No saved rule matches, so the Jev rule sets decide.</MudText>
+        }
+        else
+        {
+            <ul class="mt-2" data-testid="test-results">
+                @foreach (var (rule, status) in results)
+                {
+                    <li data-testid="@($"test-{rule.Name}")">
+                        <strong>@rule.Name</strong>: @status
+                        (<MudLink Href="@SavedRuleText.AuditHref(rule)">its decisions</MudLink>)
+                    </li>
+                }
+            </ul>
+        }
+    }
+</MudPaper>
+
+@code {
+    private const long MaxImportBytes = 512 * 1024;
+    private const string FromHelp = "An address (deals@shop.example) or a whole domain (@shop.example)";
+    private const string ToHelp = "me@gmail.com also matches me+anything@gmail.com";
+
+    private IReadOnlyList<StoredSavedRule>? _rules;
+    private IReadOnlyDictionary<string, int> _hits = new Dictionary<string, int>();
+    private string? _message;
+    private string? _pendingRemove;
+    private bool _importing;
+    private string _importJson = string.Empty;
+    private IReadOnlyList<string> _importErrors = [];
+
+    private SavedRuleDraft? _draft;
+    private string? _editing;
+    private int _tab;
+    private string _json = string.Empty;
+    private bool _confirmDelete;
+    private IReadOnlyList<string> _errors = [];
+
+    private SavedRuleInput _test = new(null, null, null, null);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _rules = await Store.ListAsync();
+        _hits = await Log.CountByKeyAsync([.. _rules.Select(r => r.Rule.Key)]);
+    }
+
+    private void New() => Open(new SavedRuleDraft(), null);
+
+    private void Edit(SavedRule rule) => Open(SavedRuleDraft.Of(rule), rule.Name);
+
+    private void Open(SavedRuleDraft draft, string? editing)
+    {
+        _draft = draft;
+        _editing = editing;
+        _errors = [];
+        _confirmDelete = false;
+        _tab = 0;
+        _json = SavedRuleJson.Serialize(draft.ToRule());
+    }
+
+    private void Close()
+    {
+        _draft = null;
+        _editing = null;
+        _errors = [];
+        _confirmDelete = false;
+    }
+
+    private void SetRemove(RemoveMode? remove)
+    {
+        if (remove == RemoveMode.Delete && _draft!.Remove != RemoveMode.Delete)
+        {
+            _confirmDelete = true;
+            return;
+        }
+
+        _confirmDelete = false;
+        _draft!.Remove = remove;
+    }
+
+    private void ConfirmDelete()
+    {
+        _confirmDelete = false;
+        _draft!.Remove = RemoveMode.Delete;
+    }
+
+    private string ReviewHref(SavedRuleDraft draft)
+        => "https://mail.google.com/mail/u/0/#label/" + Uri.EscapeDataString(draft.ToRule().ReviewLabel);
+
+    private void ApplyJson()
+    {
+        var rule = SavedRuleJson.ParseRule(_json, out var errors);
+        if (rule is null)
+        {
+            _errors = [.. errors.Select(e => e.ToString())];
+            return;
+        }
+
+        var wasDelete = _draft!.Remove == RemoveMode.Delete;
+        var draft = SavedRuleDraft.Of(rule);
+        if (rule.Remove == RemoveMode.Delete && !wasDelete)
+        {
+            // Turning Delete on through JSON asks first, like the switch.
+            draft.Remove = _draft.Remove;
+            _confirmDelete = true;
+        }
+
+        _draft = draft;
+        _errors = [];
+        _tab = 0;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_draft is null)
+        {
+            return;
+        }
+
+        if (_tab == 1)
+        {
+            ApplyJson();
+            if (_errors.Count > 0 || _confirmDelete)
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            var saved = await Store.SaveAsync(_draft.ToRule(), _editing);
+            _message = saved.Rule.Mode == RuleSetMode.Live
+                ? $"Saved {saved.Rule.Name}. It's live, so it applies to new mail."
+                : $"Saved {saved.Rule.Name} as a dry run: matches are recorded and nothing in Gmail changes.";
+            Close();
+            await ReloadAsync();
+        }
+        catch (SavedRuleValidationException ex)
+        {
+            _errors = [.. ex.Errors.Select(e => e.ToString())];
+        }
+    }
+
+    private async Task SetEnabledAsync(SavedRule rule, bool on)
+    {
+        await Store.SaveAsync(rule with { Enabled = on }, rule.Name);
+        _message = on ? $"Turned {rule.Name} on." : $"Turned {rule.Name} off. It no longer runs.";
+        await ReloadAsync();
+    }
+
+    private async Task MoveAsync(SavedRule rule, int by)
+    {
+        await Store.MoveAsync(rule.Name, by);
+        await ReloadAsync();
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (_pendingRemove is { } name)
+        {
+            _pendingRemove = null;
+            _message = await Store.DeleteAsync(name) ? $"Removed {name}." : $"{name} was already gone.";
+            if (_editing == name)
+            {
+                Close();
+            }
+
+            await ReloadAsync();
+        }
+    }
+
+    /// <summary>Each saved rule the test message matches, in order, with what the pipeline would do with it.</summary>
+    private List<(SavedRule Rule, string Status)> TestResults()
+    {
+        var results = new List<(SavedRule, string)>();
+        var stopped = false;
+        foreach (var rule in (_rules ?? []).Select(r => r.Rule))
+        {
+            if (!SavedRuleEngine.Matches(rule, _test))
+            {
+                continue;
+            }
+
+            string status;
+            if (!rule.Enabled)
+            {
+                status = "matches, but it's off";
+            }
+            else if (stopped)
+            {
+                status = "matches, but an earlier rule stops first";
+            }
+            else
+            {
+                var verb = rule.Mode == RuleSetMode.Live ? "would" : "would record (dry run) that it would";
+                status = $"{verb} {SavedRuleText.Action(rule)}";
+                if (SavedRuleEngine.Stops(rule))
+                {
+                    status += ", and the Jev rule sets are skipped";
+                    stopped = true;
+                }
+            }
+
+            results.Add((rule, status));
+        }
+
+        return results;
+    }
+
+    private async Task ReadFileAsync(InputFileChangeEventArgs e)
+    {
+        _importErrors = [];
+        try
+        {
+            await using var stream = e.File.OpenReadStream(MaxImportBytes);
+            using var reader = new StreamReader(stream);
+            _importJson = await reader.ReadToEndAsync();
+        }
+        catch (IOException ex)
+        {
+            _importErrors = [$"Couldn't read {e.File.Name}: {ex.Message}"];
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        try
+        {
+            var result = await Store.ImportAsync(_importJson);
+            _message = $"Imported {result.Added} new and {result.Updated} updated saved rule(s).";
+            _importJson = string.Empty;
+            _importErrors = [];
+            _importing = false;
+            await ReloadAsync();
+        }
+        catch (SavedRuleValidationException ex)
+        {
+            _importErrors = [.. ex.Errors.Select(e => e.ToString())];
+        }
+    }
+}

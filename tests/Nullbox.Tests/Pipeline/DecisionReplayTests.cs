@@ -50,7 +50,7 @@ public sealed class DecisionReplayTests : IAsyncLifetime
 
             var log = _db.Log();
             await new MessagePipeline(
-                _db.RuleSets(), log, log, _gmail, _jev, Options.Create(new NullboxOptions()), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance)
+                _db.RuleSets(), _db.SavedRules(), log, log, _gmail, _jev, Options.Create(new NullboxOptions()), Options.Create(new GmailOptions()), _db.Time, NullLogger<MessagePipeline>.Instance)
                 .ProcessAsync(id, default);
             _db.Time.Advance(TimeSpan.FromMinutes(1));
         }

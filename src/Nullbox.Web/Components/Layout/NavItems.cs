@@ -11,6 +11,7 @@ public static class NavItems
     [
         new("Dashboard", "/", Icons.Material.Filled.Dashboard),
         new("Rule sets", "/rules", Icons.Material.Filled.Rule),
+        new("Saved rules", "/saved-rules", Icons.Material.Filled.PlaylistAddCheck),
         new("Test", "/test", Icons.Material.Filled.Science),
         new("Audit", "/audit", Icons.Material.Filled.History),
         new("Cleanup", "/cleanup", Icons.Material.Filled.CleaningServices),

@@ -90,6 +90,8 @@ public sealed class GmailApiServiceTests
                     new { name = "subject", value = "50% off" },
                     new { name = "Date", value = "Thu, 27 Nov 2025 05:00:00 +0000" },
                     new { name = "List-Unsubscribe", value = "<mailto:u@shop.example>" },
+                    new { name = "To", value = "Me <me+shop@gmail.com>" },
+                    new { name = "Cc", value = "ann@y.example" },
                 },
             },
         });
@@ -98,6 +100,7 @@ public sealed class GmailApiServiceTests
 
         Assert.Equal("Shop <deals@shop.example>", message.From);
         Assert.Equal("50% off", message.Subject);
+        Assert.Equal(("Me <me+shop@gmail.com>", "ann@y.example"), (message.To, message.Cc));
         Assert.Equal("t1", message.ThreadId);
         Assert.Equal(["INBOX", "UNREAD"], message.LabelIds);
         Assert.True(message.HasUnsubscribe);
@@ -107,6 +110,7 @@ public sealed class GmailApiServiceTests
         var request = Assert.Single(_api.Requests);
         Assert.Equal("metadata", request.Query("format"));
         Assert.Contains("List-Unsubscribe", request.Uri.Query);
+        Assert.Contains("metadataHeaders=Cc", request.Uri.Query);
         Assert.Equal("id,threadId,labelIds,snippet,internalDate,payload/headers", request.Query("fields"));
     }
 
