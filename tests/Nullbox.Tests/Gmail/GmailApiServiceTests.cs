@@ -219,7 +219,7 @@ public sealed class GmailApiServiceTests
     [Fact]
     public async Task Empty_inputs_make_no_requests()
     {
-        var service = CreateService(o => o.AllowPermanentDelete = true);
+        var service = CreateService(o => (o.AllowDelete, o.AllowPermanentDelete) = (true, true));
 
         await service.BatchModifyAsync([], ["L"], null);
         await service.BatchModifyAsync(Ids(3), null, null);
@@ -272,11 +272,20 @@ public sealed class GmailApiServiceTests
     // ---- trash and delete -----------------------------------------------------------------------
 
     [Fact]
-    public async Task Trash_moves_each_distinct_message_to_trash()
+    public async Task Trash_is_refused_while_deletes_are_locked_and_sends_nothing()
+    {
+        var ex = await Assert.ThrowsAsync<DeleteLockedException>(() => CreateService().TrashAsync(["a", "b"]));
+
+        Assert.Contains("AllowDelete", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(_api.Requests);
+    }
+
+    [Fact]
+    public async Task Trash_moves_each_distinct_message_to_trash_when_unlocked()
     {
         _api.On("POST /messages/*/trash", req => FakeGmailApi.Json(new { id = req.Route.Split('/')[2] }));
 
-        await CreateService().TrashAsync(["a", "b", "a"]);
+        await CreateService(o => o.AllowDelete = true).TrashAsync(["a", "b", "a"]);
 
         Assert.Equal(["POST /messages/a/trash", "POST /messages/b/trash"], _api.Requests.Select(r => r.Route));
     }
@@ -284,7 +293,23 @@ public sealed class GmailApiServiceTests
     [Fact]
     public async Task BatchDelete_is_refused_by_default_and_sends_nothing()
     {
-        await Assert.ThrowsAsync<PermanentDeleteDisabledException>(() => CreateService().BatchDeleteAsync(Ids(5)));
+        await Assert.ThrowsAsync<DeleteLockedException>(() => CreateService().BatchDeleteAsync(Ids(5)));
+
+        Assert.Empty(_api.Requests);
+    }
+
+    [Fact]
+    public async Task BatchDelete_stays_locked_even_when_permanent_delete_is_allowed()
+    {
+        await Assert.ThrowsAsync<DeleteLockedException>(() => CreateService(o => o.AllowPermanentDelete = true).BatchDeleteAsync(Ids(5)));
+
+        Assert.Empty(_api.Requests);
+    }
+
+    [Fact]
+    public async Task BatchDelete_still_needs_permanent_delete_once_unlocked()
+    {
+        await Assert.ThrowsAsync<PermanentDeleteDisabledException>(() => CreateService(o => o.AllowDelete = true).BatchDeleteAsync(Ids(5)));
 
         Assert.Empty(_api.Requests);
     }
@@ -294,7 +319,7 @@ public sealed class GmailApiServiceTests
     {
         _api.On("POST /messages/batchDelete", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
 
-        await CreateService(o => o.AllowPermanentDelete = true).BatchDeleteAsync(Ids(1001));
+        await CreateService(o => (o.AllowDelete, o.AllowPermanentDelete) = (true, true)).BatchDeleteAsync(Ids(1001));
 
         Assert.Equal([1000, 1], _api.To("POST /messages/batchDelete").Select(c => c.JsonStrings("ids").Count));
     }

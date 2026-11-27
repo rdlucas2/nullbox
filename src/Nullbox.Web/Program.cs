@@ -56,6 +56,7 @@ app.MapPipelineEndpoints();
 app.MapNullboxUi();
 
 app.WarnIfAdminPasswordMissing();
+app.LogDeleteLock();
 
 await app.RunAsync();
 return 0;

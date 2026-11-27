@@ -60,7 +60,8 @@ Patterns from the Jev docs work as ordinary conditions:
 and `none` (match and stop without changing anything; can't be combined).
 
 With `match: all`, the actions of every matching decision are combined, each once, and applied in a fixed order:
-labels, star, mark read, archive, then trash.
+labels, star, mark read, archive, then trash. While the app-wide delete lock is on (`Nullbox:Gmail:AllowDelete`
+is false, the default), `trash` archives instead and the blocked delete is recorded as skipped.
 
 Starred and important mail is protected: `mark_read`, `archive` and `trash` are held back (and recorded as skipped)
 unless the matching decision sets `"allow_protected": true`. Labels and stars only add, so they still apply.

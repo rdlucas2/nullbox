@@ -19,6 +19,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     private readonly FakeInboxGmail _gmail = new();
     private readonly FakeJevClient _jev = new(_ => Answers.ConfidentPromo);
     private readonly NullboxOptions _options = new();
+    private readonly GmailOptions _gmailOptions = new();
 
     public Task InitializeAsync() => _db.InitializeAsync();
 
@@ -29,7 +30,7 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     private MessagePipeline Pipeline()
     {
         var log = _db.Log();
-        return new(_db.RuleSets(), log, log, _gmail, _jev, Options.Create(_options), _db.Time, NullLogger<MessagePipeline>.Instance);
+        return new(_db.RuleSets(), log, log, _gmail, _jev, Options.Create(_options), Options.Create(_gmailOptions), _db.Time, NullLogger<MessagePipeline>.Instance);
     }
 
     [Fact]
@@ -59,6 +60,41 @@ public sealed class MessagePipelineTests : IAsyncLifetime
 
         Assert.Equal(["label:nullbox/promo", "modify:m1:+Label_nullbox/promo:-UNREAD,INBOX"], _gmail.Changes);
         Assert.Equal(DecisionOutcome.Applied, Assert.Single(await _db.Log().ListAsync("m1")).Outcome);
+    }
+
+    private static RuleSetDocument Trasher => RuleSetSeeds.Load(RuleSetSeeds.PromoCleanup) with
+    {
+        Name = "junk",
+        Mode = RuleSetMode.Live,
+        Decisions = [new DecisionRule { Name = "Trash promos", When = "category.choice == \"promo\"", Actions = ["trash"] }],
+    };
+
+    [Fact]
+    public async Task A_trash_rule_with_the_delete_lock_on_archives_and_never_calls_trash()
+    {
+        await _db.ActivateAsync(Trasher);
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Equal(["modify:m1:+:-INBOX"], _gmail.Changes);
+        var record = Assert.Single(await _db.Log().ListAsync("m1"));
+        Assert.Equal((DecisionOutcome.Applied, "archive"), (record.Outcome, Assert.Single(record.Actions)));
+        Assert.Contains("delete blocked by lock", Assert.Single(record.Skipped), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_trash_rule_with_the_delete_lock_off_trashes()
+    {
+        _gmailOptions.AllowDelete = true;
+        _gmail.AllowDelete = true;
+        await _db.ActivateAsync(Trasher);
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Equal(["trash:m1"], _gmail.Changes);
+        Assert.Empty(Assert.Single(await _db.Log().ListAsync("m1")).Skipped);
     }
 
     [Fact]

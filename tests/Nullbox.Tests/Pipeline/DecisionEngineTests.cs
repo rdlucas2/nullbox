@@ -170,11 +170,30 @@ public sealed class ActionPlanTests
     [Fact]
     public void Actions_are_deduplicated_and_ordered_with_trash_last()
     {
-        var plan = ActionPlan.Create(Plain, [D("a", false, "trash", "label:x", "mark_read"), D("b", false, "label:x", "star", "archive", "label:y")]);
+        var plan = ActionPlan.Create(Plain, [D("a", false, "trash", "label:x", "mark_read"), D("b", false, "label:x", "star", "archive", "label:y")], allowDelete: true);
 
         Assert.Equal(["label:x", "label:y", "star", "mark_read", "archive", "trash"], plan.Actions.Select(a => a.ToString()));
         Assert.Empty(plan.Skipped);
         Assert.True(plan.HasChanges);
+    }
+
+    [Fact]
+    public void With_the_delete_lock_on_trash_archives_instead_and_is_recorded_as_blocked()
+    {
+        var plan = ActionPlan.Create(Plain, [D("junk", false, "label:junk", "trash")]);
+
+        Assert.Equal(["label:junk", "archive"], plan.Actions.Select(a => a.ToString()));
+        var skipped = Assert.Single(plan.Skipped);
+        Assert.Equal(("trash", "junk", ActionPlan.DeleteLockedReason), (skipped.Action.ToString(), skipped.Decision, skipped.Reason));
+    }
+
+    [Fact]
+    public void A_blocked_trash_and_an_archive_give_one_archive()
+    {
+        var plan = ActionPlan.Create(Plain, [D("a", false, "archive"), D("b", false, "trash")]);
+
+        Assert.Equal(["archive"], plan.Actions.Select(a => a.ToString()));
+        Assert.Single(plan.Skipped);
     }
 
     [Fact]
@@ -213,7 +232,7 @@ public sealed class ActionExecutorTests
     [Fact]
     public async Task Labels_star_read_and_archive_go_in_one_modify_then_trash()
     {
-        var gmail = new Inbox.FakeInboxGmail();
+        var gmail = new Inbox.FakeInboxGmail { AllowDelete = true };
         var plan = new ActionPlan([.. new[] { "label:promo", "star", "mark_read", "archive", "trash" }.Select(RuleAction.Parse)], []);
 
         await ActionExecutor.ApplyAsync(gmail, "m1", plan, default);
@@ -224,7 +243,7 @@ public sealed class ActionExecutorTests
     [Fact]
     public async Task Only_what_the_plan_asks_for_is_called()
     {
-        var gmail = new Inbox.FakeInboxGmail();
+        var gmail = new Inbox.FakeInboxGmail { AllowDelete = true };
 
         await ActionExecutor.ApplyAsync(gmail, "m1", new ActionPlan([RuleAction.Parse("trash")], []), default);
         await ActionExecutor.ApplyAsync(gmail, "m2", ActionPlan.Empty, default);

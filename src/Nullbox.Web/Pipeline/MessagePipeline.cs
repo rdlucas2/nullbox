@@ -22,6 +22,7 @@ public sealed class MessagePipeline(
     IGmailService gmail,
     IJevClient jev,
     IOptions<NullboxOptions> options,
+    IOptions<GmailOptions> gmailOptions,
     TimeProvider time,
     ILogger<MessagePipeline> logger) : IMessageProcessor
 {
@@ -58,7 +59,7 @@ public sealed class MessagePipeline(
             var request = JevRequestBuilder.Build(version.Document, message, time.GetUtcNow());
             var result = await jev.EvaluateAsync(request, new JevCallContext(messageId, version.Key), cancellationToken);
             var decisions = DecisionEngine.Evaluate(version.Document, result);
-            var plan = ActionPlan.Create(message, decisions);
+            var plan = ActionPlan.Create(message, decisions, gmailOptions.Value.AllowDelete);
             var outcome = await OutcomeAsync(version.Document.Mode, plan, cancellationToken);
 
             if (outcome == DecisionOutcome.Applied)

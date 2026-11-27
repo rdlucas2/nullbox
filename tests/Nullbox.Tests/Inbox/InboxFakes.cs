@@ -73,8 +73,16 @@ public sealed class FakeInboxGmail : IGmailService
 
     public Task ArchiveAsync(IEnumerable<string> messageIds, string? label, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
+    /// <summary>Mirrors the real service: Trash is refused while the delete lock is on (the default).</summary>
+    public bool AllowDelete { get; set; }
+
     public Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
     {
+        if (!AllowDelete)
+        {
+            throw new DeleteLockedException();
+        }
+
         Changes.Enqueue($"trash:{string.Join(",", messageIds)}");
         return Task.CompletedTask;
     }

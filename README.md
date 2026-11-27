@@ -65,6 +65,8 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Pipeline:MaxMessagesPerHour` | `100` | Most messages changed in any rolling hour; later live decisions are only recorded. |
 | `Nullbox:Pipeline:MaxAttempts` | `4` | Failed attempts before a message is recorded as poison and not retried. |
 | `Nullbox:Pipeline:AuthRetryDelay` | `01:00:00` | Wait before retrying when Gmail or Jev needs re-authorizing. |
+| `Nullbox:Gmail:AllowDelete` | `false` | The app-wide **delete lock**. While false, nothing is moved to Trash or deleted, whatever a rule or job says; rules archive instead. The dashboard shows "Deletes locked". |
+| `Nullbox:Gmail:AllowPermanentDelete` | `false` | Permanent delete (bulk jobs only, never rules). Also needs `AllowDelete`. |
 
 ## Jobs and dashboard
 
@@ -94,7 +96,8 @@ in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
 - fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
 
 Starred and important mail is never marked read, archived or trashed unless the decision sets `allow_protected`.
-Trash is the strongest action; the pipeline never deletes permanently. A Jev budget that runs out, or a Gmail or Jev
+Trash is the strongest action and needs the delete lock lifted (`Nullbox:Gmail:AllowDelete`); while it is on, a
+`trash` decision archives instead and records the delete as blocked. The pipeline never deletes permanently. A Jev budget that runs out, or a Gmail or Jev
 credential that needs fixing, puts the message off until later. Other failures are retried with Hangfire's growing
 delay up to `MaxAttempts`, then the message is recorded as poison and left alone.
 

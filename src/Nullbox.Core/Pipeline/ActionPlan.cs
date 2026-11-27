@@ -14,6 +14,8 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList
 {
     public const string ProtectedReason = "message is starred or important (set allow_protected on the decision to allow this)";
 
+    public const string DeleteLockedReason = "delete blocked by lock (Nullbox:Gmail:AllowDelete is off); archived instead";
+
     public static ActionPlan Empty { get; } = new([], []);
 
     public bool HasChanges => Actions.Count > 0;
@@ -21,9 +23,10 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList
     /// <summary>
     /// Combines the actions of <paramref name="decisions"/>. A starred or important message is never marked read,
     /// archived or trashed unless the decision sets <c>allow_protected</c>; labels and stars only add, so they still
-    /// apply. <c>none</c> contributes nothing.
+    /// apply. <c>none</c> contributes nothing. While the delete lock is on (<paramref name="allowDelete"/> false),
+    /// <c>trash</c> becomes <c>archive</c> and the blocked delete is recorded as skipped, so Trash is never called.
     /// </summary>
-    public static ActionPlan Create(GmailMessage message, IReadOnlyList<Decision> decisions)
+    public static ActionPlan Create(GmailMessage message, IReadOnlyList<Decision> decisions, bool allowDelete = false)
     {
         ArgumentNullException.ThrowIfNull(message);
         ArgumentNullException.ThrowIfNull(decisions);
@@ -38,6 +41,15 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, IReadOnlyList
                 if (isProtected && !decision.AllowProtected && Hides(action.Kind))
                 {
                     skipped.Add(new SkippedAction(action, decision.Label, ProtectedReason));
+                }
+                else if (action.Kind == RuleActionKind.Trash && !allowDelete)
+                {
+                    skipped.Add(new SkippedAction(action, decision.Label, DeleteLockedReason));
+                    var archive = new RuleAction(RuleActionKind.Archive);
+                    if (!actions.Contains(archive))
+                    {
+                        actions.Add(archive);
+                    }
                 }
                 else if (!actions.Contains(action))
                 {

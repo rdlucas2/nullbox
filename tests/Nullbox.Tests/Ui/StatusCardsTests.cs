@@ -26,8 +26,25 @@ public sealed class StatusCardsTests : IAsyncLifetime
         GmailCredentialStatus? gmail = null,
         JobRunStatus? poll = null,
         JevBudgetStatus? budget = null,
-        QueueStatus? queues = null)
-        => new(gmail, poll, null, queues ?? new QueueStatus(0, 0, 0, 0, new Dictionary<string, long>()), budget, Now);
+        QueueStatus? queues = null,
+        bool deletesAllowed = false)
+        => new(gmail, poll, null, queues ?? new QueueStatus(0, 0, 0, 0, new Dictionary<string, long>()), budget, Now, deletesAllowed);
+
+    [Fact]
+    public void Deletes_show_as_locked_by_default()
+    {
+        var cut = _ctx.Render<StatusCards>(p => p.Add(c => c.Snapshot, Snapshot()));
+
+        Assert.Contains("Deletes locked", cut.Find("[data-testid=delete-lock]").TextContent);
+    }
+
+    [Fact]
+    public void Unlocked_deletes_are_called_out()
+    {
+        var cut = _ctx.Render<StatusCards>(p => p.Add(c => c.Snapshot, Snapshot(deletesAllowed: true)));
+
+        Assert.Contains("Deletes allowed", cut.Find("[data-testid=delete-lock]").TextContent);
+    }
 
     [Fact]
     public void Empty_snapshot_shows_setup_hints()
