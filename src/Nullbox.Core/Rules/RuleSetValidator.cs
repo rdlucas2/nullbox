@@ -37,9 +37,25 @@ public static partial class RuleSetValidator
             ValidateQuestion($"/questions/{name}", name, question, Add);
         }
 
+        var reviewLabels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < document.Decisions.Count; i++)
         {
-            ValidateDecision($"/decisions/{i}", document.Decisions[i], document.Questions, Add);
+            var decision = document.Decisions[i];
+            ValidateDecision($"/decisions/{i}", decision, document.Questions, Add);
+
+            // Each removing rule's mail must be reviewable on its own, so two rules can't share a review label.
+            if (decision.Remove is not null && !string.IsNullOrEmpty(document.Name))
+            {
+                var label = ReviewLabels.For(document.Name, decision, i);
+                if (reviewLabels.TryGetValue(label, out var first))
+                {
+                    Add($"/decisions/{i}/name", $"Decision {first} already uses the review label {label}; give this rule a different name.");
+                }
+                else
+                {
+                    reviewLabels[label] = i;
+                }
+            }
         }
 
         return errors;
@@ -122,9 +138,13 @@ public static partial class RuleSetValidator
             }
         }
 
-        if (rule.Actions is null || rule.Actions.Count == 0)
+        if ((rule.Actions is null || rule.Actions.Count == 0) && rule.Remove is null)
         {
-            add($"{path}/actions", "Add at least one action (use none to match without changing anything).");
+            add($"{path}/actions", "Add an action or set remove to archive (use none to match without changing anything).");
+        }
+        else if (rule.Remove is not null && actions.Any(a => a.Kind == RuleActionKind.None))
+        {
+            add($"{path}/remove", "none means change nothing, so it cannot be combined with remove.");
         }
         else if (actions.Count > 1 && actions.Any(a => a.Kind == RuleActionKind.None))
         {

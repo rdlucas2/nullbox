@@ -3,7 +3,10 @@ using Nullbox.Core.Rules;
 
 namespace Nullbox.Data.Rules;
 
-/// <summary><see cref="IRuleSetStore"/> over EF Core. Versions are only ever inserted, never updated.</summary>
+/// <summary>
+/// <see cref="IRuleSetStore"/> over EF Core. Versions are only ever inserted, never updated (the one exception is the
+/// startup conversion of pre-switch archive/trash actions in <see cref="DatabaseInitializer"/>).
+/// </summary>
 public sealed class EfRuleSetStore(NullboxDbContext db, TimeProvider time) : IRuleSetStore
 {
     public async Task<IReadOnlyList<RuleSetSummary>> ListAsync(CancellationToken cancellationToken = default)
