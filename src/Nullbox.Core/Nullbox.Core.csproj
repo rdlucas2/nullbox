@@ -4,4 +4,13 @@
     <RootNamespace>Nullbox.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="JsonSchema.Net" Version="9.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Rules\ruleset.schema.json" LogicalName="Nullbox.Core.Rules.ruleset.schema.json" />
+    <EmbeddedResource Include="Rules\Seeds\*.json" LogicalName="Nullbox.Core.Rules.Seeds.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

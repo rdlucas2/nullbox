@@ -1,4 +1,6 @@
 using Nullbox.Core;
+using Nullbox.Core.Rules;
+using Nullbox.Data;
 using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Hosting;
@@ -20,6 +22,7 @@ builder.Services.AddHealthChecks();
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
 builder.Services.AddNullboxGmail(builder.Configuration);
+builder.Services.AddNullboxData(NullboxHosting.ResolveDataDirectory(builder.Configuration));
 
 var app = builder.Build();
 
@@ -32,6 +35,7 @@ app.MapGet("/", () => Results.Ok(new { name = AppInfo.Name, version = AppInfo.Ve
 app.MapAdminAuthEndpoints();
 app.MapNullboxDashboard();
 app.MapGmailSettings();
+app.MapGet("/schemas/ruleset.schema.json", () => Results.Text(RuleSetSchema.Text, "application/schema+json"));
 
 app.WarnIfAdminPasswordMissing();
 
