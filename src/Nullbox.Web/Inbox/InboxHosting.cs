@@ -6,6 +6,7 @@ using Nullbox.Core.Gmail;
 using Nullbox.Core.Inbox;
 using Nullbox.Core.Options;
 using Nullbox.Web.Auth;
+using Nullbox.Web.Pipeline;
 
 namespace Nullbox.Web.Inbox;
 
@@ -25,7 +26,7 @@ public static class InboxHosting
             var options = sp.GetRequiredService<IOptions<NullboxOptions>>().Value;
             return new SqliteInboxStateStore(Path.Combine(Path.GetFullPath(options.DataDirectory), DatabaseFileName));
         });
-        services.TryAddSingleton<IMessageProcessor, NoopMessageProcessor>();
+        services.TryAddScoped<IMessageProcessor, MessagePipeline>();
         services.TryAddSingleton<IMessageJobQueue, HangfireMessageJobQueue>();
         services.AddTransient(sp => new InboxPoller(
             sp.GetService<IGmailService>(),

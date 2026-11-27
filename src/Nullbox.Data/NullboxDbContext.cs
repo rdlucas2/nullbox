@@ -13,6 +13,12 @@ public sealed class NullboxDbContext(DbContextOptions<NullboxDbContext> options)
 
     public DbSet<RuleSetVersionRow> RuleSetVersions => Set<RuleSetVersionRow>();
 
+    public DbSet<DecisionRow> Decisions => Set<DecisionRow>();
+
+    public DbSet<MessageFailureRow> MessageFailures => Set<MessageFailureRow>();
+
+    public DbSet<AppSettingRow> AppSettings => Set<AppSettingRow>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RuleSetRow>(e =>
@@ -33,7 +39,89 @@ public sealed class NullboxDbContext(DbContextOptions<NullboxDbContext> options)
             e.Property(v => v.Json).IsRequired();
             e.Property(v => v.Hash).HasMaxLength(64).IsRequired();
         });
+
+        modelBuilder.Entity<DecisionRow>(e =>
+        {
+            e.ToTable("decisions");
+            e.HasKey(d => d.Id);
+            e.Property(d => d.MessageId).HasMaxLength(128).IsRequired();
+            e.Property(d => d.RuleSetKey).HasMaxLength(96).IsRequired();
+            e.Property(d => d.Mode).HasConversion<string>().HasMaxLength(16);
+            e.Property(d => d.Outcome).HasConversion<string>().HasMaxLength(16);
+            e.Property(d => d.Model).HasMaxLength(128);
+            e.HasIndex(d => new { d.MessageId, d.RuleSetKey });
+            e.HasIndex(d => new { d.Outcome, d.CreatedUtc });
+            e.HasIndex(d => d.CreatedUtc);
+        });
+
+        modelBuilder.Entity<MessageFailureRow>(e =>
+        {
+            e.ToTable("message_failures");
+            e.HasKey(f => f.MessageId);
+            e.Property(f => f.MessageId).HasMaxLength(128);
+            e.Property(f => f.LastError).HasMaxLength(2000);
+            e.HasIndex(f => new { f.Poison, f.UpdatedUtc });
+        });
+
+        modelBuilder.Entity<AppSettingRow>(e =>
+        {
+            e.ToTable("app_settings");
+            e.HasKey(a => a.Key);
+            e.Property(a => a.Key).HasMaxLength(64);
+            e.Property(a => a.Value).HasMaxLength(2000);
+        });
     }
+}
+
+/// <summary>One rule-set version's verdict on one message (see <see cref="Nullbox.Core.Pipeline.DecisionRecord"/>).</summary>
+public sealed class DecisionRow
+{
+    public long Id { get; set; }
+
+    public required string MessageId { get; set; }
+
+    public required string RuleSetKey { get; set; }
+
+    public Nullbox.Core.Rules.RuleSetMode Mode { get; set; }
+
+    public Nullbox.Core.Pipeline.DecisionOutcome Outcome { get; set; }
+
+    /// <summary>JSON array of matched decision names.</summary>
+    public required string DecisionsJson { get; set; }
+
+    /// <summary>JSON array of action strings.</summary>
+    public required string ActionsJson { get; set; }
+
+    /// <summary>JSON array of "action (decision): reason" strings.</summary>
+    public required string SkippedJson { get; set; }
+
+    public string? Model { get; set; }
+
+    public required string AnswersJson { get; set; }
+
+    public DateTime CreatedUtc { get; set; }
+}
+
+/// <summary>Failed attempts for a message; <see cref="Poison"/> once it is given up on.</summary>
+public sealed class MessageFailureRow
+{
+    public required string MessageId { get; set; }
+
+    public int Attempts { get; set; }
+
+    public string? LastError { get; set; }
+
+    public bool Poison { get; set; }
+
+    public DateTime UpdatedUtc { get; set; }
+}
+
+/// <summary>Runtime settings changed from the app, such as the kill switch.</summary>
+public sealed class AppSettingRow
+{
+    public required string Key { get; set; }
+
+    public string? Value { get; set; }
 }
 
 public sealed class RuleSetRow

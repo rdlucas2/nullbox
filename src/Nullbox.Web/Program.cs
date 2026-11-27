@@ -1,10 +1,12 @@
 using Nullbox.Core;
 using Nullbox.Core.Rules;
 using Nullbox.Data;
+using Nullbox.Jev;
 using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Hosting;
 using Nullbox.Web.Inbox;
+using Nullbox.Web.Pipeline;
 using Nullbox.Web.Settings;
 
 if (args is [HealthProbe.Flag, ..])
@@ -25,6 +27,7 @@ builder.Services.AddNullboxJobs();
 builder.Services.AddNullboxGmail(builder.Configuration);
 builder.Services.AddNullboxData(NullboxHosting.ResolveDataDirectory(builder.Configuration));
 builder.Services.AddNullboxInbox();
+builder.Services.AddNullboxJev(builder.Configuration, NullboxHosting.ResolveDataDirectory(builder.Configuration));
 
 var app = builder.Build();
 
@@ -39,6 +42,7 @@ app.MapNullboxDashboard();
 app.MapGmailSettings();
 app.MapGet("/schemas/ruleset.schema.json", () => Results.Text(RuleSetSchema.Text, "application/schema+json"));
 app.MapInboxEndpoints();
+app.MapPipelineEndpoints();
 
 app.WarnIfAdminPasswordMissing();
 

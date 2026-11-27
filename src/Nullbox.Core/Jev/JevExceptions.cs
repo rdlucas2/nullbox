@@ -35,3 +35,7 @@ public sealed class JevBudgetExceededException(string reason, DateTimeOffset ret
 
     public DateTimeOffset RetryAfter { get; } = retryAfter;
 }
+
+/// <summary>No Jev API key is configured, so nothing can be sent. Jobs should defer rather than fail.</summary>
+public sealed class JevNotConfiguredException()
+    : InvalidOperationException("No Jev API key configured. Set JEV_API_KEY (or Nullbox:Jev:ApiKey).");

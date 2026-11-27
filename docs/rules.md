@@ -32,7 +32,7 @@ checked against [`ruleset.schema.json`](../src/Nullbox.Core/Rules/ruleset.schema
 | `state.body_max_chars` | The body is cut to this length (only sent if `body` is listed). |
 | `questions` | Jev questions in Jev's own request shape (see [jev-api.md](jev-api.md)): `choice`, `score`, `noul`. Names: lowercase letters, digits, `_`. |
 | `match` | `first`: the first matching decision wins. `all`: every matching decision applies. |
-| `decisions` | Ordered `when` → `actions` rules. |
+| `decisions` | Ordered `when` → `actions` rules. A decision may set `allow_protected: true` (see Actions). |
 
 ## Conditions (`when`)
 
@@ -58,6 +58,15 @@ Patterns from the Jev docs work as ordinary conditions:
 
 `label:<name>` (created if needed), `mark_read`, `archive`, `trash` (recoverable, never a permanent delete), `star`,
 and `none` (match and stop without changing anything; can't be combined).
+
+With `match: all`, the actions of every matching decision are combined, each once, and applied in a fixed order:
+labels, star, mark read, archive, then trash.
+
+Starred and important mail is protected: `mark_read`, `archive` and `trash` are held back (and recorded as skipped)
+unless the matching decision sets `"allow_protected": true`. Labels and stars only add, so they still apply.
+
+Nothing changes in Gmail unless the rule set's `mode` is `live`, the kill switch is off and the hourly cap isn't
+reached; see the README's "Message pipeline" section.
 
 ## Versions
 

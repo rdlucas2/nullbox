@@ -42,7 +42,7 @@ public sealed class HttpJevClient : IJevClient
         ArgumentNullException.ThrowIfNull(request);
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
-            throw new InvalidOperationException("No Jev API key configured. Set JEV_API_KEY (or Nullbox:Jev:ApiKey).");
+            throw new JevNotConfiguredException();
         }
 
         var toSend = JevStateTruncator.Truncate(request, _options.MaxRequestTokens, out var truncated);

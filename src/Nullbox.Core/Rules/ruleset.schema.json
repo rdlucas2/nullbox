@@ -272,6 +272,11 @@
             "type": "string",
             "pattern": "^(label:.+|mark_read|archive|trash|star|none)$"
           }
+        },
+        "allow_protected": {
+          "description": "Also mark read, archive or trash starred or important messages, which are otherwise only labelled or starred.",
+          "type": "boolean",
+          "default": false
         }
       }
     }

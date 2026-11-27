@@ -48,6 +48,10 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Jobs:InboxPollCron` | `*/5 * * * *` | How often the `inbox-poll` job checks Gmail for new inbox mail (UTC). |
 | `Nullbox:Jobs:InboxResyncWindow` | `2d` | Gmail `newer_than:` window listed on first run and when history has expired. |
 | `Nullbox:Jobs:MessageWorkers` | `2` | Messages processed at once (workers on the `inbox` queue). |
+| `Nullbox:Pipeline:KillSwitch` | `false` | `true` stops every Gmail change; live rule sets only record what they would do. |
+| `Nullbox:Pipeline:MaxMessagesPerHour` | `100` | Most messages changed in any rolling hour; later live decisions are only recorded. |
+| `Nullbox:Pipeline:MaxAttempts` | `4` | Failed attempts before a message is recorded as poison and not retried. |
+| `Nullbox:Pipeline:AuthRetryDelay` | `01:00:00` | Wait before retrying when Gmail or Jev needs re-authorizing. |
 
 ## Jobs and dashboard
 
@@ -64,8 +68,25 @@ in `{data}/nullbox.db`, so a message is enqueued once even when it shows up agai
 retried (the next run carries on). Without a Gmail token the poll records "Gmail not configured" and does nothing.
 
 Signed in as admin: `GET /inbox/status` shows the history id, pause flag and last result; `POST /inbox/pause` and
-`POST /inbox/resume` (with an antiforgery token) stop and restart polling. Processing is a stub until the rule
-pipeline lands.
+`POST /inbox/resume` (with an antiforgery token) stop and restart polling.
+
+## Message pipeline
+
+Each new message goes through every active rule set ([docs/rules.md](docs/rules.md)): nullbox fetches the message
+(the body only when a rule set's `state` asks for it), asks Jev, picks the matching decisions and records the verdict
+in `{data}/nullbox.db`. Gmail is only changed when all of these hold:
+
+- the rule set's `mode` is `live` (new and example rule sets are `dry_run`, which only records what would happen);
+- the kill switch is off (`Nullbox:Pipeline:KillSwitch`, or `POST /pipeline/kill-switch/on|off` at runtime);
+- fewer than `Nullbox:Pipeline:MaxMessagesPerHour` messages were changed in the last hour.
+
+Starred and important mail is never marked read, archived or trashed unless the decision sets `allow_protected`.
+Trash is the strongest action; the pipeline never deletes permanently. A Jev budget that runs out, or a Gmail or Jev
+credential that needs fixing, puts the message off until later. Other failures are retried with Hangfire's growing
+delay up to `MaxAttempts`, then the message is recorded as poison and left alone.
+
+Signed in as admin: `GET /pipeline/status`, `GET /pipeline/decisions?messageId=&limit=` (newest first) and
+`GET /pipeline/poison`.
 
 ## Run in Docker
 

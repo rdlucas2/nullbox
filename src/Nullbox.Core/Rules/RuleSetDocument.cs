@@ -92,4 +92,11 @@ public sealed record DecisionRule
     public required string When { get; init; }
 
     public required IReadOnlyList<string> Actions { get; init; }
+
+    /// <summary>
+    /// Starred and important messages are never marked read, archived or trashed unless the matching decision sets
+    /// this (labels and stars still apply). Off by default, and left out of the JSON when off.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AllowProtected { get; init; }
 }
