@@ -27,7 +27,27 @@ dotnet test Nullbox.sln
 dotnet run --project src/Nullbox.Web
 ```
 
-The app exposes `GET /healthz` (returns `Healthy`) and `GET /` (app name and version).
+The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /` (app name and version).
+
+## Configuration
+
+Settings bind from the `Nullbox` section (`appsettings.json`, or env vars such as `Nullbox__Hangfire__WorkerCount=4`).
+The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply when the `Nullbox:` keys are unset.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Nullbox:AdminPassword` / `ADMIN_PASSWORD` | unset | Admin login for `/hangfire` and the UI. Unset means nobody can sign in. |
+| `Nullbox:DataDirectory` / `NULLBOX_DATA_DIR` | `data` | SQLite databases and Google tokens (`/data` in the container). |
+| `Nullbox:Hangfire:Storage` | `SQLite` | `SQLite` (file `hangfire.db` in the data directory) or `InMemory` (tests). |
+| `Nullbox:Hangfire:WorkerCount` | `2` | Hangfire worker threads. |
+| `Nullbox:Hangfire:DashboardPath` | `/hangfire` | Dashboard URL, behind the admin login. |
+| `Nullbox:Jobs:HeartbeatCron` | `*/5 * * * *` | No-op heartbeat job (UTC) that proves the scheduler runs. |
+
+## Jobs and dashboard
+
+Hangfire runs inside the web app. Sign in at `/login` with `ADMIN_PASSWORD` to open the dashboard at `/hangfire`,
+where the `heartbeat` recurring job shows up and can be triggered by hand. Jobs are registered through
+`IJobScheduler` (in `Nullbox.Core`), so nothing outside `Nullbox.Web` references Hangfire.
 
 Builds treat warnings as errors and enforce code style; run `dotnet format Nullbox.sln` before committing.
 CI (`.github/workflows/ci.yml`) runs restore, format check, build and test on every PR and push to `main`.
