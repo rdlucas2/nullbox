@@ -25,6 +25,8 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
         // Far-future schedule so only explicit triggers run the heartbeat during tests.
         ["Nullbox:Jobs:HeartbeatCron"] = "0 0 1 1 *",
         ["Nullbox:Jobs:InboxPollCron"] = "0 0 1 1 *",
+        // The suite signs in hundreds of times from one address; LoginRateLimitTests checks the real limit.
+        ["Nullbox:Login:AttemptsPerWindow"] = "100000",
     };
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -52,6 +54,10 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
         base.Dispose(disposing);
         if (disposing)
         {
+            // Hangfire keeps one process-wide log provider bound to the last host's logger factory; once that host is
+            // gone, anything Hangfire creates (e.g. AutomaticRetryAttribute) would hit a disposed factory. Fall back
+            // to Hangfire's default provider instead.
+            Hangfire.Logging.LogProvider.SetCurrentLogProvider(null);
             try
             {
                 Directory.Delete(DataDirectory, recursive: true);

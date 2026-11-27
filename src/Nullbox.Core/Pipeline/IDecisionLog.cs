@@ -136,6 +136,9 @@ public interface IDecisionLog
     /// <summary>Messages changed by <see cref="DecisionOutcome.Applied"/> records at or after <paramref name="since"/>.</summary>
     Task<int> CountAppliedSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default);
 
+    /// <summary>How many records of each outcome were made at or after <paramref name="since"/> (for metrics).</summary>
+    Task<IReadOnlyDictionary<DecisionOutcome, int>> CountByOutcomeSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default);
+
     /// <summary>Counts a failed attempt and returns the attempts so far.</summary>
     Task<int> RecordFailureAsync(string messageId, string error, DateTimeOffset at, CancellationToken cancellationToken = default);
 

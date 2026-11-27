@@ -8,6 +8,47 @@ See [PLAN.md](PLAN.md) for architecture and milestones, [docs/jev-api.md](docs/j
 [docs/rules.md](docs/rules.md) for writing rule sets,
 and the GitHub issues for the work breakdown. Gmail actions are a port of [emailBlaster](https://github.com/rdlucas2/emailblaster).
 
+## Setup: fresh clone to a working container
+
+1. **Google sign-in.** In Google Cloud, create (or reuse emailBlaster's) OAuth client of type **Desktop app** for the
+   Gmail API, then make a token on a machine with a browser:
+   `dotnet run --project tools/Nullbox.Auth -- --scopes full` writes `data/google/token.json`
+   ([docs/gmail-auth.md](docs/gmail-auth.md); emailBlaster's `token.json` works as it is). For filter sync, also make
+   `token_filters.json` with `--filters`.
+2. **Jev key.** Create an API key at console.typesafe.ai.
+3. **Settings.** `cp .env.example .env`, then set `ADMIN_PASSWORD` and `JEV_API_KEY`. Leave the delete settings alone:
+   nothing is deleted until you lift the delete lock on purpose (see the safety model below).
+4. **Run.** `docker compose up -d --build`, wait for `docker compose ps` to show `(healthy)`, open
+   `http://localhost:8480`, and sign in. If you skipped step 1, upload `token.json` at `/settings/gmail`.
+5. **Check.** The dashboard's Gmail card says **Connected** and **Deletes locked**; `/healthz/ready` (signed in) lists
+   the database, Gmail and Jev as healthy. The two example rule sets are dry runs, so nothing changes in Gmail until
+   you activate a live rule set.
+
+For the home server (LAN-only bind, backups, Tailscale/Caddy), follow [docs/deploy.md](docs/deploy.md). Secrets and
+HTTPS are covered in [docs/security.md](docs/security.md).
+
+## Safety model
+
+nullbox is built so that a wrong rule costs you a trip to a label, not lost mail.
+
+- **Promote each rule.** Each rule's switch is Dry run | Keep in inbox | Archive | Delete, and new rules start on
+  **Dry run**: they record what they match, change nothing and never take the first match from the rules below them.
+  Promote a rule to Archive (it adds the review label `nullbox/review/<rule-set>/<rule>`) once its dry runs look
+  right, then to Delete, which needs a confirmation in the editor.
+- **Delete lock** (`Nullbox:Gmail:AllowDelete`, off by default): while it is on, nothing is moved to Trash, whatever a
+  rule or job says, and Delete rules archive instead. Rules never delete permanently; bulk permanent delete also needs
+  `AllowPermanentDelete` and is capped per run. Changing these on `/settings` asks for confirmation, is saved to
+  `data/settings.json` and only takes effect after a restart.
+- **Kill switch** (Jobs page or `Nullbox:Pipeline:KillSwitch`): live rule sets only record what they would do, and
+  cleanup and bulk jobs only dry-run. An hourly cap (`MaxMessagesPerHour`) limits how many messages change.
+- **Protected mail.** Starred and important mail is never marked read or removed unless a rule sets `allow_protected`.
+- **Dry runs everywhere.** Example rule sets, new rules, cleanup files, filter sync and bulk jobs all dry-run unless
+  asked; a cleanup file can only be applied after a finished dry run, and applying asks for confirmation in the UI.
+- **Everything is logged and undoable.** The audit log keeps every decision with Jev's answers; applied decisions can be
+  undone from `/audit` (labels off, back to the inbox, out of Trash), and each undo is logged so it can't run twice.
+- **Privacy.** Message bodies, subjects and snippets are never written to logs (the smoke test checks); Jev only sees
+  the fields a rule set's state template names, with the body cut short.
+
 ## Layout
 
 | Path | What lives there |
@@ -93,6 +134,8 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Gmail:AllowDelete` | `false` | The app-wide **delete lock**. While false, nothing is moved to Trash or deleted, whatever a rule or job says; rules archive instead. The dashboard shows "Deletes locked". |
 | `Nullbox:Gmail:AllowPermanentDelete` | `false` | Permanent delete (bulk jobs only, never rules). Also needs `AllowDelete`. |
 | `Nullbox:Gmail:AllowFilterSync` | `false` | Lets the filter sync create labels and Gmail filters (dry runs work without it). Needs `token_filters.json`. |
+| `Nullbox:Login:AttemptsPerWindow` / `WindowSeconds` | `10` / `300` | Sign-in attempts allowed per client address per window; more answer 429. |
+| `Nullbox:Gmail:ApiBaseUri` / `TokenEndpoint` | unset | **Testing only** (the smoke test's fakes). A warning is logged at start when set. |
 
 ## Jobs and dashboard
 
@@ -212,6 +255,24 @@ The filter sync uses the separate filters token (`token_filters.json`, `gmail.se
 emailBlaster's `create_filters.py` writes; the mail token is left alone. Differences from the scripts: confirmation
 prompts are the explicit `dryRun=false`; labels use UTC timestamps; an archive with no matches creates no label;
 batch_archive.py's 1000-per-run stop is gone (use a narrower query), and one_thousand_batch.py's delete is the `cap`.
+
+## Operations
+
+- **Health:** `/healthz` is liveness (the database answers) and drives the container HEALTHCHECK, so a missing Gmail
+  token never marks the container unhealthy. `/healthz/ready` (admin) reports `database`, `gmail` and `jev` as JSON:
+  Gmail is degraded when not connected and unhealthy when Google rejected the token; Jev is degraded without a key or
+  over its daily budget.
+- **Metrics:** `GET /api/metrics` (admin): decisions by outcome in the last 24 hours, messages changed in the last hour,
+  Hangfire job counts, Jev tokens and requests with the estimated cost today, and cleanup runs by status.
+- **Logs:** structured, `simple` by default or one JSON object per line with `NULLBOX_LOG_FORMAT=json`.
+- **Sign-in rate limit:** `POST /login` allows `Nullbox:Login:AttemptsPerWindow` (10) attempts per client address every
+  `Nullbox:Login:WindowSeconds` (300); more answer 429.
+- **Backups and migrations:** the database migrates itself on start; nightly backups and restores are in
+  [docs/deploy.md](docs/deploy.md#backups).
+- **End-to-end smoke test:** `deploy/smoke/run-smoke.sh` runs nullbox against fake Gmail, token and Jev endpoints
+  (`tools/Nullbox.FakeUpstream`) in compose, polls, checks that only dry-run decisions were made and nothing in Gmail
+  changed, runs a cleanup dry run, checks component health, and greps the logs for message content. CI runs it on
+  every push.
 
 ## Run in Docker
 

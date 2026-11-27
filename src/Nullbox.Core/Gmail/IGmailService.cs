@@ -148,6 +148,15 @@ public sealed class GmailOptions
     /// </summary>
     public bool AllowFilterSync { get; set; }
 
+    /// <summary>
+    /// <b>Testing only</b>: send Gmail API calls here instead of <c>https://gmail.googleapis.com/</c> (the compose smoke
+    /// test points it at a fake). Null in production; a warning is logged at startup when set.
+    /// </summary>
+    public string? ApiBaseUri { get; set; }
+
+    /// <summary><b>Testing only</b>: refresh tokens here instead of Google's token endpoint. Null in production.</summary>
+    public string? TokenEndpoint { get; set; }
+
     /// <summary>Body text is cut to this many characters (bodies are never logged).</summary>
     public int BodyMaxChars { get; set; } = 4000;
 

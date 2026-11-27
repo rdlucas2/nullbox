@@ -81,6 +81,9 @@ jobs:
           docker exec --user 1654 nullbox-ci dotnet Nullbox.Web.dll --backup --dest /tmp/nullbox-backups
           docker exec nullbox-ci test -f "$(docker exec nullbox-ci sh -c 'ls -d /tmp/nullbox-backups/nullbox-*')/hangfire.db"
 
+      - name: End-to-end smoke against fake Gmail and Jev
+        run: deploy/smoke/run-smoke.sh
+
       - name: Container logs
         if: always()
         run: docker logs nullbox-ci || true

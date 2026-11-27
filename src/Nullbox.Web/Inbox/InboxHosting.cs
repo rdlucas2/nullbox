@@ -52,7 +52,7 @@ public static class InboxHosting
         return services;
     }
 
-    /// <summary>Admin-only status (GET) and pause/resume (POST with an antiforgery token) for the inbox poll.</summary>
+    /// <summary>Admin-only status (GET), and pause, resume and run-now (POST with an antiforgery token) for the inbox poll.</summary>
     public static IEndpointRouteBuilder MapInboxEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/inbox").RequireAuthorization(AdminAuth.PolicyName);
@@ -61,6 +61,17 @@ public static class InboxHosting
 
         group.MapPost("/pause", (HttpContext http, IAntiforgery antiforgery, IInboxStateStore store) => SetPausedAsync(http, antiforgery, store, true));
         group.MapPost("/resume", (HttpContext http, IAntiforgery antiforgery, IInboxStateStore store) => SetPausedAsync(http, antiforgery, store, false));
+        group.MapPost("/run", async (HttpContext http, IAntiforgery antiforgery, Nullbox.Core.Jobs.IJobScheduler scheduler) =>
+        {
+            if (!await antiforgery.IsRequestValidAsync(http))
+            {
+                return Results.BadRequest("Missing or invalid antiforgery token.");
+            }
+
+            return scheduler.TriggerRecurring(InboxPollJob.JobId) is { } jobId
+                ? Results.Accepted(value: new { jobId })
+                : Results.NotFound("The inbox poll is not scheduled.");
+        });
 
         return endpoints;
     }

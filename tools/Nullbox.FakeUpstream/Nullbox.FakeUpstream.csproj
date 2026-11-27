@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Stand-in for Gmail, Google's token endpoint and Jev, for the compose smoke test only (deploy/smoke). -->
+  <PropertyGroup>
+    <RootNamespace>Nullbox.FakeUpstream</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

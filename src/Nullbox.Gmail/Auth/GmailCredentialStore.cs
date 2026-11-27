@@ -30,13 +30,17 @@ public sealed class GmailCredentialStore : IGmailCredentialStore
         GoogleCredentialFiles files,
         ILogger<GmailCredentialStore> logger,
         TimeProvider? time = null,
-        Google.Apis.Http.IHttpClientFactory? httpClientFactory = null)
+        Google.Apis.Http.IHttpClientFactory? httpClientFactory = null,
+        string? tokenEndpoint = null)
     {
         _files = files;
         _logger = logger;
         _time = time ?? TimeProvider.System;
         _httpClientFactory = httpClientFactory;
+        _tokenEndpoint = string.IsNullOrWhiteSpace(tokenEndpoint) ? null : tokenEndpoint;
     }
+
+    private readonly string? _tokenEndpoint;
 
     /// <summary>The credential for <paramref name="kind"/>, reloaded when its file changes on disk.</summary>
     /// <exception cref="GmailNotConfiguredException">No token file.</exception>
@@ -196,13 +200,22 @@ public sealed class GmailCredentialStore : IGmailCredentialStore
             : throw new GmailCredentialFormatException("token.json has no client_id/client_secret and credentials.json is missing.");
     }
 
-    private GoogleAuthorizationCodeFlow CreateFlow(GoogleOAuthClient client, IDataStore store)
+    private AuthorizationCodeFlow CreateFlow(GoogleOAuthClient client, IDataStore store)
     {
-        var initializer = new GoogleAuthorizationCodeFlow.Initializer
+        var secrets = new ClientSecrets { ClientId = client.ClientId, ClientSecret = client.ClientSecret };
+        if (_tokenEndpoint is not null)
         {
-            ClientSecrets = new ClientSecrets { ClientId = client.ClientId, ClientSecret = client.ClientSecret },
-            DataStore = store,
-        };
+            // Testing only (GmailOptions.TokenEndpoint): a plain flow is the only way to choose the token URL.
+            var test = new AuthorizationCodeFlow.Initializer(GoogleAuthConsts.OidcAuthorizationUrl, _tokenEndpoint) { ClientSecrets = secrets, DataStore = store };
+            if (_httpClientFactory is not null)
+            {
+                test.HttpClientFactory = _httpClientFactory;
+            }
+
+            return new AuthorizationCodeFlow(test);
+        }
+
+        var initializer = new GoogleAuthorizationCodeFlow.Initializer { ClientSecrets = secrets, DataStore = store };
         if (_httpClientFactory is not null)
         {
             initializer.HttpClientFactory = _httpClientFactory;

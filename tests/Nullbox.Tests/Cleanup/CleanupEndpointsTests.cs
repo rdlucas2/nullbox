@@ -86,6 +86,7 @@ public sealed class CleanupEndpointsTests : IDisposable
 
         var listed = JsonDocument.Parse(await client.GetStringAsync("/cleanup/runs")).RootElement;
         Assert.Equal(id, listed[0].GetProperty("id").GetInt64());
+        Assert.Equal("Completed", listed[0].GetProperty("status").GetString());
     }
 
     private async Task<CleanupRun> WaitForFinishAsync(long id)

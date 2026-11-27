@@ -122,6 +122,16 @@ public sealed class EfDecisionLog(NullboxDbContext db) : IDecisionLog, IPipeline
             .Select(d => d.MessageId).Distinct().CountAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyDictionary<DecisionOutcome, int>> CountByOutcomeSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        var from = since.UtcDateTime;
+        var counts = await db.Decisions.Where(d => d.CreatedUtc >= from)
+            .GroupBy(d => d.Outcome)
+            .Select(g => new { Outcome = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        return counts.ToDictionary(c => c.Outcome, c => c.Count);
+    }
+
     public async Task<int> RecordFailureAsync(string messageId, string error, DateTimeOffset at, CancellationToken cancellationToken = default)
     {
         var row = await db.MessageFailures.FindAsync([messageId], cancellationToken);

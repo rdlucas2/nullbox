@@ -98,6 +98,45 @@ also skips its review label.
 Nothing changes in Gmail unless the rule set's `mode` is `live`, the kill switch is off and the hourly cap isn't
 reached; see the README's "Message pipeline" section.
 
+## Examples
+
+**Archive newsletters, label receipts, never touch people.** First match wins, so the screen goes first:
+
+```json
+{
+  "name": "inbox-tidy",
+  "questions": {
+    "from_a_person": { "type": "noul", "instructions": "A real person wrote this email to the recipient." },
+    "kind": { "type": "choice", "instructions": "What kind of email is this?",
+              "criteria": { "newsletter": "A newsletter or digest the recipient subscribed to",
+                            "receipt": "A purchase, payment or shipping confirmation",
+                            "other": "Anything else" } }
+  },
+  "match": "first",
+  "decisions": [
+    { "name": "Leave people alone", "when": "from_a_person.noul >= 0.5", "actions": ["none"] },
+    { "name": "Archive newsletters", "when": "kind.choice == \"newsletter\" && kind.confidence >= 0.85",
+      "actions": ["mark_read"], "remove": "dry_run" },
+    { "name": "Label receipts", "when": "kind.choice == \"receipt\" && kind.confidence >= 0.7",
+      "actions": ["label:Receipts"] }
+  ]
+}
+```
+
+"Archive newsletters" starts as a dry run, like every new rule: once the rule set is active it records what it would
+archive and changes nothing (the receipts rule below it still runs). When the audit log shows only newsletters,
+promote it to `archive`; matching mail then gets the label `nullbox/review/inbox-tidy/archive-newsletters`. Check that
+label in Gmail for a week, then switch it to Delete (and lift the delete lock if you want it to actually trash).
+
+**Flag likely phishing without moving it.** A rule with only a label never leaves the inbox:
+
+```json
+{ "name": "Flag phishing", "when": "is_phishing.noul >= 0.9", "actions": ["label:nullbox/suspicious", "star"] }
+```
+
+Rules can only test Jev's answers. For plain sender or search rules ("everything from spam.example"), use a cleanup file
+(`/cleanup`) or a Gmail filter instead.
+
 ## Versions
 
 Every save that changes the document adds a new immutable version; saving identical content does not. The pipeline

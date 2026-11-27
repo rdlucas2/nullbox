@@ -12,14 +12,27 @@ public interface IGmailClientFactory
     GmailService Create(GmailTokenKind kind = GmailTokenKind.Primary);
 }
 
-public sealed class GmailClientFactory(GmailCredentialStore store, Google.Apis.Http.IHttpClientFactory? httpClientFactory = null) : IGmailClientFactory
+/// <summary>
+/// Hands out Gmail clients over the stored tokens. A non-null base URI (testing only, <see cref="GmailOptions.ApiBaseUri"/>)
+/// points them at a Gmail API stand-in instead of Google.
+/// </summary>
+public sealed class GmailClientFactory(GmailCredentialStore store, Google.Apis.Http.IHttpClientFactory? httpClientFactory = null, string? baseUri = null) : IGmailClientFactory
 {
-    public GmailService Create(GmailTokenKind kind = GmailTokenKind.Primary) => new(new BaseClientService.Initializer
+    public GmailService Create(GmailTokenKind kind = GmailTokenKind.Primary)
     {
-        HttpClientInitializer = new StoredCredentialInitializer(store, kind),
-        HttpClientFactory = httpClientFactory ?? new Google.Apis.Http.HttpClientFactory(),
-        ApplicationName = "nullbox",
-    });
+        var initializer = new BaseClientService.Initializer
+        {
+            HttpClientInitializer = new StoredCredentialInitializer(store, kind),
+            HttpClientFactory = httpClientFactory ?? new Google.Apis.Http.HttpClientFactory(),
+            ApplicationName = "nullbox",
+        };
+        if (!string.IsNullOrWhiteSpace(baseUri))
+        {
+            initializer.BaseUri = baseUri.EndsWith('/') ? baseUri : baseUri + "/";
+        }
+
+        return new GmailService(initializer);
+    }
 }
 
 /// <summary>

@@ -78,6 +78,7 @@ public static class FilterDefinitions
     };
 }
 
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<FilterSyncStatus>))]
 public enum FilterSyncStatus
 {
     Created,

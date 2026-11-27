@@ -34,6 +34,7 @@ public interface ICleanupConfigStore
     CleanupConfigEntry Save(string id, string json);
 }
 
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<CleanupRunStatus>))]
 public enum CleanupRunStatus
 {
     Queued,

@@ -166,6 +166,14 @@ public static partial class NullboxHosting
         {
             app.Logger.LogInformation("Delete lock is on: nothing will be moved to Trash or deleted (Nullbox:Gmail:AllowDelete=false)");
         }
+
+        if (gmail.ApiBaseUri is { Length: > 0 } || gmail.TokenEndpoint is { Length: > 0 })
+        {
+            app.Logger.LogWarning(
+                "Gmail calls are redirected for testing (ApiBaseUri {ApiBaseUri}, TokenEndpoint {TokenEndpoint}); never set these in production",
+                gmail.ApiBaseUri ?? "-",
+                gmail.TokenEndpoint ?? "-");
+        }
     }
 
     [GeneratedRegex("^[1-9][0-9]{0,3}[dmy]$|^[1-9][0-9]{0,4}h$")]

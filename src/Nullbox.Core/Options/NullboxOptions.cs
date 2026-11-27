@@ -15,6 +15,8 @@ public sealed class NullboxOptions
 
     public JobSettings Jobs { get; set; } = new();
 
+    public LoginSettings Login { get; set; } = new();
+
     public PipelineSettings Pipeline { get; set; } = new();
 
     public AuditSettings Audit { get; set; } = new();
@@ -101,4 +103,12 @@ public sealed class TesterSettings
 {
     /// <summary>Most messages one test run may take (Jev calls per run are at most twice this).</summary>
     public int MaxMessages { get; set; } = 25;
+}
+
+/// <summary>Brute-force guard on <c>POST /login</c>: attempts allowed per client address in each window.</summary>
+public sealed class LoginSettings
+{
+    public int AttemptsPerWindow { get; set; } = 10;
+
+    public int WindowSeconds { get; set; } = 300;
 }
