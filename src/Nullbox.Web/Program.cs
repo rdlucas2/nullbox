@@ -6,6 +6,7 @@ using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Backup;
 using Nullbox.Web.Bulk;
+using Nullbox.Web.Cleanup;
 using Nullbox.Web.Hosting;
 using Nullbox.Web.Inbox;
 using Nullbox.Web.Pipeline;
@@ -37,6 +38,7 @@ builder.Services.AddNullboxGmail(builder.Configuration);
 builder.Services.AddNullboxData(NullboxHosting.ResolveDataDirectory(builder.Configuration));
 builder.Services.AddNullboxInbox();
 builder.Services.AddNullboxBulk();
+builder.Services.AddNullboxCleanup();
 builder.Services.AddNullboxJev(builder.Configuration, NullboxHosting.ResolveDataDirectory(builder.Configuration));
 builder.Services.AddNullboxUi();
 
@@ -56,6 +58,7 @@ app.MapGet("/schemas/ruleset.schema.json", () => Results.Text(RuleSetSchema.Text
 app.MapInboxEndpoints();
 app.MapPipelineEndpoints();
 app.MapBulkEndpoints();
+app.MapCleanupEndpoints();
 app.MapNullboxUi();
 
 app.WarnIfAdminPasswordMissing();

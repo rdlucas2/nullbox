@@ -44,6 +44,8 @@ public sealed class PipelineDb : IAsyncLifetime
 
     public EfRuleSetStore RuleSets() => new(Context(), Time);
 
+    public Nullbox.Data.Cleanup.EfCleanupRunLog CleanupRuns() => new(Context(), Time);
+
     /// <summary>Saves and activates <paramref name="document"/>.</summary>
     public async Task<RuleSetVersion> ActivateAsync(RuleSetDocument document)
     {

@@ -118,11 +118,77 @@ public sealed class PipelineEndToEndTests : IDisposable
 
         using var decisions = await client.GetAsync("/pipeline/decisions?limit=5");
         using var poison = await client.GetAsync("/pipeline/poison");
-        Assert.Equal("[]", await decisions.Content.ReadAsStringAsync());
+        Assert.Equal("""{"items":[],"next":null}""", await decisions.Content.ReadAsStringAsync());
         Assert.Equal("[]", await poison.Content.ReadAsStringAsync());
+
+        using (var badOutcome = await client.GetAsync("/pipeline/decisions?outcome=maybe"))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, badOutcome.StatusCode);
+        }
+
+        using (var replayNoToken = await client.PostAsync("/pipeline/replay", JsonBody("{}")))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, replayNoToken.StatusCode);
+            Assert.Contains("antiforgery", await replayNoToken.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
 
         using var off = await client.PostAsync("/pipeline/kill-switch/off", new FormUrlEncodedContent([token]));
         Assert.False(JsonDocument.Parse(await off.Content.ReadAsStringAsync()).RootElement.GetProperty("killSwitch").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Decisions_can_be_filtered_and_a_draft_replayed_over_them_without_touching_Gmail()
+    {
+        _ = _factory.Server;
+        _factory.Gmail.Add("m1");
+        _factory.Gmail.InboxSearchResults.Add("m1");
+        await PollAndWaitAsync("m1", ruleSets: 2);
+
+        using var client = _factory.CreateNonRedirectingClient();
+        using var login = await LoginHelper.LoginAsync(client, NullboxAppFactory.AdminPassword);
+
+        using var filtered = await client.GetAsync("/pipeline/decisions?ruleSet=promo-cleanup&version=1&action=archive&mode=dry_run&outcome=dry_run&minConfidence=0.8");
+        var page = JsonDocument.Parse(await filtered.Content.ReadAsStringAsync()).RootElement;
+        var item = Assert.Single(page.GetProperty("items").EnumerateArray());
+        Assert.Equal("promo-cleanup@v1", item.GetProperty("ruleSetKey").GetString());
+        Assert.Equal("dry_run", item.GetProperty("outcome").GetString());
+        Assert.Equal(64, item.GetProperty("inputsHash").GetString()!.Length);
+
+        using var none = await client.GetAsync("/pipeline/decisions?ruleSet=promo-cleanup&maxConfidence=0.5");
+        Assert.Empty(JsonDocument.Parse(await none.Content.ReadAsStringAsync()).RootElement.GetProperty("items").EnumerateArray());
+
+        var token = await LoginHelper.GetAntiforgeryFieldAsync(client);
+        using (var invalid = await PostReplayAsync(client, token.Value, """{ "rule_set": { "name": "Bad Name" } }"""))
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            Assert.Contains("errors", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        var draft = RuleJson.Serialize(RuleSetSeeds.Load(RuleSetSeeds.PromoCleanup) with
+        {
+            Decisions = [new DecisionRule { Name = "Only label", When = "category.choice == \"promo\"", Actions = ["label:nullbox/promo"] }],
+        });
+        var callsBefore = _factory.Jev.Calls.Count;
+        using var replay = await PostReplayAsync(client, token.Value, $$"""{ "rule_set": {{draft}}, "sample": { "limit": 10 } }""");
+
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+        var result = JsonDocument.Parse(await replay.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(1, result.GetProperty("changed").GetInt32());
+        Assert.Equal(0, result.GetProperty("jevCalls").GetInt32());
+        var changed = Assert.Single(result.GetProperty("items").EnumerateArray());
+        Assert.Equal("changed", changed.GetProperty("status").GetString());
+        Assert.Equal(["label:nullbox/promo"], changed.GetProperty("after").GetProperty("actions").EnumerateArray().Select(a => a.GetString()));
+        Assert.Equal(callsBefore, _factory.Jev.Calls.Count);
+        Assert.Empty(_factory.Gmail.Changes);
+    }
+
+    private static StringContent JsonBody(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
+
+    private static async Task<HttpResponseMessage> PostReplayAsync(HttpClient client, string token, string json)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/pipeline/replay") { Content = JsonBody(json) };
+        request.Headers.Add("RequestVerificationToken", token);
+        return await client.SendAsync(request);
     }
 
     private static async Task WaitForAsync(Func<Task<bool>> condition)

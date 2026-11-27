@@ -44,7 +44,25 @@ public sealed record RuleSetSummary(
 public sealed record RuleSetVersion(string Name, int Version, RuleSetDocument Document, string Json, string Hash, DateTime CreatedUtc, bool IsActive)
 {
     /// <summary>Stable id for caches and the audit log, e.g. <c>promo-cleanup@v3</c>.</summary>
-    public string Key => $"{Name}@v{Version}";
+    public string Key => KeyOf(Name, Version);
+
+    public static string KeyOf(string name, int version) => $"{name}@v{version}";
+
+    /// <summary>Splits a <see cref="Key"/> such as <c>promo-cleanup@v3</c> back into name and version.</summary>
+    public static bool TryParseKey(string key, out string name, out int version)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var at = key.LastIndexOf("@v", StringComparison.Ordinal);
+        if (at > 0 && int.TryParse(key.AsSpan(at + 2), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out version))
+        {
+            name = key[..at];
+            return true;
+        }
+
+        name = key;
+        version = 0;
+        return false;
+    }
 }
 
 public sealed class RuleSetValidationException(IReadOnlyList<RuleSetError> errors)
