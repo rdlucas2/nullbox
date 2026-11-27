@@ -8,7 +8,7 @@ data/
 # Secrets: never commit (credentials live in ./data/google/, which is ignored above)
 credentials.json
 token.json
-token_*.json
+token*.json
 client_secret*.json
 *.pem
 *.key

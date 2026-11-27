@@ -15,6 +15,7 @@ and the GitHub issues for the work breakdown. Gmail actions are a port of [email
 | `src/Nullbox.Core` | Domain model, rule model, interfaces (`IGmailService`, `IJevClient`, ...) |
 | `src/Nullbox.Gmail` | Gmail API implementation |
 | `src/Nullbox.Jev` | TypeSafe Jev HTTP client |
+| `tools/Nullbox.Auth` | `nullbox-auth`: one-time Google consent on a PC, writes `token.json` ([docs/gmail-auth.md](docs/gmail-auth.md)) |
 | `tests/Nullbox.Tests` | xUnit tests (unit + in-process integration via `WebApplicationFactory`) |
 
 ## Build and run
@@ -66,7 +67,8 @@ docker compose ps                    # STATUS shows (healthy)
 
 - Host port defaults to **8480**; set `NULLBOX_PORT` in `.env` to change it, and `NULLBOX_BIND` to a LAN IP to
   publish on one interface only.
-- Put emailBlaster's `credentials.json` and `token.json` in `./data/google/` (see PLAN.md). `./data` and `.env`
+- Put emailBlaster's `credentials.json` and `token.json` in `./data/google/`, or upload the token at
+  `/settings/gmail` after signing in. See [docs/gmail-auth.md](docs/gmail-auth.md). `./data` and `.env`
   are gitignored and excluded from the build context.
 - Without Compose: `docker build -t nullbox:local .` then
   `docker run -d -p 8480:8080 -v "$PWD/data:/data" --env-file .env nullbox:local`.

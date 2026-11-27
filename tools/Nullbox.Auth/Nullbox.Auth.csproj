@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Nullbox.Auth</RootNamespace>
+    <AssemblyName>nullbox-auth</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>nullbox-auth</ToolCommandName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nullbox.Gmail\Nullbox.Gmail.csproj" />
+  </ItemGroup>
+
+</Project>
