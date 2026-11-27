@@ -144,7 +144,7 @@ public class HttpJevClientTests
         var handler = new ScriptedHandler();
         var client = JevTestSupport.Client(handler, JevTestSupport.Options(o => o.ApiKey = null));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.EvaluateAsync(JevTestSupport.SimpleRequest()));
+        await Assert.ThrowsAsync<JevNotConfiguredException>(() => client.EvaluateAsync(JevTestSupport.SimpleRequest()));
 
         Assert.Empty(handler.Sent);
     }

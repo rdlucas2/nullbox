@@ -66,6 +66,24 @@ public sealed class RemoveSwitchTests
     }
 
     [Fact]
+    public void A_remove_only_rule_built_in_code_survives_the_store_round_trip()
+    {
+        var document = Minimal(new DecisionRule { Name = "Spam", When = "spam.noul >= 0.9", Remove = RemoveMode.Delete });
+
+        var json = RuleJson.Serialize(document); // writes "actions": []
+        var parsed = RuleJson.Parse(json, out var errors);
+
+        Assert.Empty(errors);
+        Assert.Equal(RemoveMode.Delete, parsed!.Decisions[0].Remove);
+    }
+
+    [Fact]
+    public void An_empty_action_list_still_needs_remove()
+        => Assert.Contains(
+            RuleSetValidator.Validate(Minimal(new DecisionRule { When = "spam.noul >= 0.9", Actions = [] })),
+            e => e.Path == "/decisions/0/actions");
+
+    [Fact]
     public void A_rule_needs_an_action_or_remove()
     {
         Assert.Contains(RuleSetSchema.Validate(Json("""{"when":"spam.noul >= 0.9"}""")), e => e.Path == "/decisions/0");

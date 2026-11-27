@@ -103,6 +103,13 @@ public sealed record DecisionRule
     /// for new rules in the editor) or <see cref="RemoveMode.Delete"/> (Trash). Null leaves it in the inbox.
     /// </summary>
     public RemoveMode? Remove { get; init; }
+
+    /// <summary>
+    /// Starred and important messages are never marked read or removed from the inbox unless the matching decision
+    /// sets this (labels and stars still apply). Off by default, and left out of the JSON when off.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AllowProtected { get; init; }
 }
 
 /// <summary>The Archive | Delete switch on a decision.</summary>

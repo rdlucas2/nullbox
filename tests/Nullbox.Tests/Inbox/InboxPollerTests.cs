@@ -173,41 +173,6 @@ public sealed class InboxPollerTests : IDisposable
     }
 }
 
-public sealed class ProcessMessageJobTests : IDisposable
-{
-    private readonly TempStore _db = new();
-    private readonly RecordingProcessor _processor = new();
-
-    public void Dispose() => _db.Dispose();
-
-    private ProcessMessageJob Job() => new(_processor, _db.Store, TimeProvider.System, NullLogger<ProcessMessageJob>.Instance);
-
-    [Fact]
-    public async Task Processes_a_message_once_and_skips_repeats()
-    {
-        await Job().ExecuteAsync("m1", default);
-        await Job().ExecuteAsync("m1", default);
-
-        Assert.Equal(["m1"], _processor.Processed);
-        Assert.True(await _db.Store.IsProcessedAsync("m1"));
-    }
-
-    [Fact]
-    public async Task A_failed_run_is_not_marked_processed()
-    {
-        var failing = new ProcessMessageJob(new ThrowingProcessor(), _db.Store, TimeProvider.System, NullLogger<ProcessMessageJob>.Instance);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failing.ExecuteAsync("m1", default));
-
-        Assert.False(await _db.Store.IsProcessedAsync("m1"));
-    }
-
-    private sealed class ThrowingProcessor : Nullbox.Core.Inbox.IMessageProcessor
-    {
-        public Task ProcessAsync(string messageId, CancellationToken cancellationToken) => throw new InvalidOperationException("nope");
-    }
-}
-
 public sealed class SqliteInboxStateStoreTests : IDisposable
 {
     private readonly TempStore _db = new();

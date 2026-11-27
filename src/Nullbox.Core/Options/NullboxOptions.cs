@@ -14,6 +14,8 @@ public sealed class NullboxOptions
     public HangfireSettings Hangfire { get; set; } = new();
 
     public JobSettings Jobs { get; set; } = new();
+
+    public PipelineSettings Pipeline { get; set; } = new();
 }
 
 public enum HangfireStorageKind
@@ -53,4 +55,23 @@ public sealed class JobSettings
 
     /// <summary>How many messages are processed at once (workers on the inbox queue).</summary>
     public int MessageWorkers { get; set; } = 2;
+}
+
+/// <summary>Safety limits for applying rule-set decisions to Gmail.</summary>
+public sealed class PipelineSettings
+{
+    /// <summary>
+    /// When true, no rule set changes Gmail (live rule sets record what they would have done). Can also be switched
+    /// on at runtime; either one stops changes.
+    /// </summary>
+    public bool KillSwitch { get; set; }
+
+    /// <summary>At most this many messages are changed in any rolling hour; further live decisions are only recorded. 0 means no changes at all.</summary>
+    public int MaxMessagesPerHour { get; set; } = 100;
+
+    /// <summary>Failed attempts before a message is recorded as poison and no longer retried.</summary>
+    public int MaxAttempts { get; set; } = 4;
+
+    /// <summary>How long to wait before retrying a message when Gmail or Jev needs re-authorizing.</summary>
+    public TimeSpan AuthRetryDelay { get; set; } = TimeSpan.FromHours(1);
 }

@@ -33,7 +33,7 @@ checked against [`ruleset.schema.json`](../src/Nullbox.Core/Rules/ruleset.schema
 | `state.body_max_chars` | The body is cut to this length (only sent if `body` is listed). |
 | `questions` | Jev questions in Jev's own request shape (see [jev-api.md](jev-api.md)): `choice`, `score`, `noul`. Names: lowercase letters, digits, `_`. |
 | `match` | `first`: the first matching decision wins. `all`: every matching decision applies. |
-| `decisions` | Ordered rules: `name`, `when` → `actions`, and the `remove` switch. A rule needs at least one action or `remove`. |
+| `decisions` | Ordered rules: `name`, `when` → `actions`, and the `remove` switch. A rule needs at least one action or `remove`. A decision may set `allow_protected: true` (see Actions). |
 
 ## Conditions (`when`)
 
@@ -81,6 +81,18 @@ with its review label instead, and nothing is moved to Trash.
 
 Rule sets saved before the switch existed used `archive` and `trash` actions. On startup both are converted to
 `"remove": "archive"` (trash rules go back to archive-only), with a warning in the log naming each one.
+
+With `match: all`, the actions of every matching decision are combined, each once, and applied in a fixed order:
+labels (including review labels), star, mark read, then removal. If any matching decision archives, the message is
+archived; it goes to Trash only when a matching decision is set to `delete` and the delete lock is lifted. A
+`delete` blocked by the lock is recorded as skipped.
+
+Starred and important mail is protected: `mark_read` and `remove` are held back (and recorded as skipped) unless the
+matching decision sets `"allow_protected": true`. Labels and stars only add, so they still apply; a held-back removal
+also skips its review label.
+
+Nothing changes in Gmail unless the rule set's `mode` is `live`, the kill switch is off and the hourly cap isn't
+reached; see the README's "Message pipeline" section.
 
 ## Versions
 

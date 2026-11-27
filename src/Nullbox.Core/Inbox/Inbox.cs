@@ -33,11 +33,13 @@ public interface IInboxStateStore
 public interface IMessageJobQueue
 {
     void EnqueueProcessing(string messageId);
+
+    /// <summary>Processes the message later, e.g. once a budget resets or a token is fixed.</summary>
+    void ScheduleProcessing(string messageId, DateTimeOffset at);
 }
 
 /// <summary>
-/// What happens to one new inbox message. A stub for now; the rule pipeline (M2-12) replaces it.
-/// Must be safe to call twice for the same id.
+/// What happens to one new inbox message (the rule pipeline). Must be safe to call twice for the same id.
 /// </summary>
 public interface IMessageProcessor
 {

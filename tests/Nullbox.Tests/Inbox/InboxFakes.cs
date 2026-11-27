@@ -34,28 +34,83 @@ public sealed class FakeInboxGmail : IGmailService
         return Task.FromResult<IReadOnlyList<string>>([.. InboxSearchResults]);
     }
 
-    public Task<GmailMessage> GetMessageAsync(string messageId, MessageFormat format = MessageFormat.Metadata, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    /// <summary>Messages <see cref="GetMessageAsync"/> returns; unknown ids throw <see cref="KeyNotFoundException"/>.</summary>
+    public ConcurrentDictionary<string, GmailMessage> Messages { get; } = new();
 
-    public Task<string> EnsureLabelAsync(string name, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    /// <summary>Every change made, e.g. <c>modify:m1:+Label_1,STARRED:-UNREAD,INBOX</c> or <c>trash:m1</c>.</summary>
+    public ConcurrentQueue<string> Changes { get; } = new();
+
+    public ConcurrentQueue<MessageFormat> Fetches { get; } = new();
+
+    public Func<string, Exception?>? FailGet { get; set; }
+
+    public Task<GmailMessage> GetMessageAsync(string messageId, MessageFormat format = MessageFormat.Metadata, CancellationToken cancellationToken = default)
+    {
+        Fetches.Enqueue(format);
+        if (FailGet?.Invoke(messageId) is { } error)
+        {
+            throw error;
+        }
+
+        return Messages.TryGetValue(messageId, out var message)
+            ? Task.FromResult(message)
+            : throw new KeyNotFoundException(messageId);
+    }
+
+    public Task<string> EnsureLabelAsync(string name, CancellationToken cancellationToken = default)
+    {
+        Changes.Enqueue($"label:{name}");
+        return Task.FromResult("Label_" + name);
+    }
 
     public Task BatchModifyAsync(IEnumerable<string> messageIds, IEnumerable<string>? addLabelIds, IEnumerable<string>? removeLabelIds, CancellationToken cancellationToken = default)
-        => throw new NotSupportedException();
+    {
+        Changes.Enqueue($"modify:{string.Join(",", messageIds)}:+{string.Join(",", addLabelIds ?? [])}:-{string.Join(",", removeLabelIds ?? [])}");
+        return Task.CompletedTask;
+    }
 
     public Task MarkReadAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public Task ArchiveAsync(IEnumerable<string> messageIds, string? label, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
-    public Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    /// <summary>Mirrors the real service: Trash is refused while the delete lock is on (the default).</summary>
+    public bool AllowDelete { get; set; }
 
-    public Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
+    {
+        if (!AllowDelete)
+        {
+            throw new DeleteLockedException();
+        }
+
+        Changes.Enqueue($"trash:{string.Join(",", messageIds)}");
+        return Task.CompletedTask;
+    }
+
+    public Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("The pipeline must never delete permanently.");
+
+    /// <summary>A message with the given labels (INBOX and UNREAD by default).</summary>
+    public GmailMessage Add(string id, params string[] labels)
+    {
+        var message = new GmailMessage(
+            id, "t-" + id, "Shop <deals@shop.example>", "50% off everything", "Fri, 27 Nov 2026 08:00:00 +0000",
+            "<mailto:unsub@shop.example>", labels.Length == 0 ? [GmailLabels.Inbox, GmailLabels.Unread] : labels,
+            "Our biggest sale", DateTimeOffset.Parse("2026-11-27T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture), "Body text");
+        Messages[id] = message;
+        return message;
+    }
 }
 
 public sealed class RecordingQueue : IMessageJobQueue
 {
     public List<string> Enqueued { get; } = [];
 
+    public List<(string MessageId, DateTimeOffset At)> Scheduled { get; } = [];
+
     public void EnqueueProcessing(string messageId) => Enqueued.Add(messageId);
+
+    public void ScheduleProcessing(string messageId, DateTimeOffset at) => Scheduled.Add((messageId, at));
 }
 
 public sealed class RecordingProcessor : IMessageProcessor
