@@ -365,4 +365,74 @@ public sealed class GmailApiServiceTests
     {
         public override double NextDouble() => 0.999999;
     }
+
+    // ---- history ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Current_history_id_comes_from_the_profile()
+    {
+        _api.OnJson("GET /profile", new { historyId = "98765" });
+
+        Assert.Equal(98765UL, await CreateService().GetCurrentHistoryIdAsync());
+        Assert.Equal("historyId", _api.Requests[0].Query("fields"));
+    }
+
+    [Fact]
+    public async Task Inbox_changes_follow_pages_keep_inbox_messages_once_and_return_the_latest_id()
+    {
+        _api.On("GET /history", req => req.Query("pageToken") switch
+        {
+            null => FakeGmailApi.Json(new
+            {
+                history = new object[]
+                {
+                    new { messagesAdded = new[] { new { message = new { id = "a", labelIds = new[] { "INBOX", "UNREAD" } } } } },
+                    new { messagesAdded = new[] { new { message = new { id = "sent", labelIds = new[] { "SENT" } } } } },
+                },
+                historyId = "120",
+                nextPageToken = "p2",
+            }),
+            "p2" => FakeGmailApi.Json(new
+            {
+                history = new object[]
+                {
+                    new { messagesAdded = new[] { new { message = new { id = "a", labelIds = new[] { "INBOX" } } }, new { message = new { id = "b", labelIds = new[] { "INBOX" } } } } },
+                    new { },
+                },
+                historyId = "130",
+            }),
+            _ => FakeGmailApi.Error(HttpStatusCode.BadRequest),
+        });
+
+        var changes = await CreateService().GetInboxChangesAsync(100);
+
+        Assert.Equal(["a", "b"], changes.AddedMessageIds);
+        Assert.Equal(130UL, changes.HistoryId);
+        var first = _api.To("GET /history").First();
+        Assert.Equal("100", first.Query("startHistoryId"));
+        Assert.Equal("INBOX", first.Query("labelId"));
+        Assert.Equal("messageAdded", first.Query("historyTypes"));
+    }
+
+    [Fact]
+    public async Task Inbox_changes_with_no_history_keep_the_start_id()
+    {
+        _api.OnJson("GET /history", new { });
+
+        var changes = await CreateService().GetInboxChangesAsync(55);
+
+        Assert.Empty(changes.AddedMessageIds);
+        Assert.Equal(55UL, changes.HistoryId);
+    }
+
+    [Fact]
+    public async Task Expired_history_404_becomes_a_typed_exception_without_retries()
+    {
+        _api.On("GET /history", _ => FakeGmailApi.Error(HttpStatusCode.NotFound));
+
+        var ex = await Assert.ThrowsAsync<GmailHistoryExpiredException>(() => CreateService().GetInboxChangesAsync(7));
+
+        Assert.Equal(7UL, ex.StartHistoryId);
+        Assert.Single(_api.To("GET /history"));
+    }
 }

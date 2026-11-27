@@ -21,6 +21,7 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
         ["Nullbox:DataDirectory"] = DataDirectory,
         // Far-future schedule so only explicit triggers run the heartbeat during tests.
         ["Nullbox:Jobs:HeartbeatCron"] = "0 0 1 1 *",
+        ["Nullbox:Jobs:InboxPollCron"] = "0 0 1 1 *",
     };
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

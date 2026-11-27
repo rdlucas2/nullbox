@@ -80,6 +80,59 @@ public sealed partial class GmailApiService : IGmailService
         return Map(message, format == MessageFormat.Full ? _options.BodyMaxChars : null);
     }
 
+    public async Task<ulong> GetCurrentHistoryIdAsync(CancellationToken cancellationToken = default)
+    {
+        var request = _gmail.Users.GetProfile(Me);
+        request.Fields = "historyId";
+        var profile = await _retry.ExecuteAsync(ct => request.ExecuteAsync(ct), cancellationToken);
+        return profile.HistoryId ?? throw new InvalidOperationException("Gmail returned a profile without a historyId.");
+    }
+
+    public async Task<GmailHistoryChanges> GetInboxChangesAsync(ulong startHistoryId, CancellationToken cancellationToken = default)
+    {
+        var added = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var latest = startHistoryId;
+        string? pageToken = null;
+
+        do
+        {
+            var request = _gmail.Users.History.List(Me);
+            request.StartHistoryId = startHistoryId;
+            request.LabelId = GmailLabels.Inbox;
+            request.HistoryTypes = UsersResource.HistoryResource.ListRequest.HistoryTypesEnum.MessageAdded;
+            request.MaxResults = ListPageSize;
+            request.PageToken = pageToken;
+            request.Fields = "history(messagesAdded(message(id,labelIds))),historyId,nextPageToken";
+
+            ListHistoryResponse page;
+            try
+            {
+                page = await _retry.ExecuteAsync(ct => request.ExecuteAsync(ct), cancellationToken);
+            }
+            catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+            {
+                throw new GmailHistoryExpiredException(startHistoryId, ex);
+            }
+
+            foreach (var message in (page.History ?? []).SelectMany(h => h.MessagesAdded ?? []).Select(m => m.Message))
+            {
+                var inInbox = message?.LabelIds is null || message.LabelIds.Contains(GmailLabels.Inbox);
+                if (message?.Id is { } id && inInbox && seen.Add(id))
+                {
+                    added.Add(id);
+                }
+            }
+
+            latest = Math.Max(latest, page.HistoryId ?? latest);
+            pageToken = page.NextPageToken;
+        }
+        while (!string.IsNullOrEmpty(pageToken));
+
+        _logger.LogDebug("History since {Start} added {Count} inbox messages", startHistoryId, added.Count);
+        return new GmailHistoryChanges(added, latest);
+    }
+
     public async Task<string> EnsureLabelAsync(string name, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
