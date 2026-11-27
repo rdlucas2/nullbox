@@ -286,8 +286,9 @@
           }
         },
         "remove": {
-          "description": "The Archive | Delete switch. archive: leave the inbox with the review label nullbox/review/<rule-set>/<rule>. delete: move to Trash (archives instead while the app-wide delete lock is on). Omit to leave mail in the inbox.",
+          "description": "The Dry run | Archive | Delete switch, promoted in that order. dry_run: record the match and change nothing, even in a live rule set. archive: leave the inbox with the review label nullbox/review/<rule-set>/<rule>. delete: move to Trash (archives instead while the app-wide delete lock is on). Omit to apply the actions and leave mail in the inbox.",
           "enum": [
+            "dry_run",
             "archive",
             "delete",
             null

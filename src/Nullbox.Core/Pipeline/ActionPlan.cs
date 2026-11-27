@@ -34,6 +34,8 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, PlannedRemova
 
     public const string GentlerDecisionReason = "another matching decision only archives; archived instead";
 
+    public const string DryRunDecisionReason = "the rule is in dry run; recorded only";
+
     public static ActionPlan Empty { get; } = new([], PlannedRemoval.None, []);
 
     public bool HasChanges => Actions.Count > 0 || Removal != PlannedRemoval.None;
@@ -53,6 +55,8 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, PlannedRemova
     /// The gentlest removal wins: mail goes to Trash only when every matching removing decision is set to delete and
     /// <paramref name="allowDelete"/> is true (the app-wide delete lock is lifted). Otherwise it is archived and each
     /// held-back delete is recorded as skipped, so Trash is never called while the lock is on.
+    /// A decision set to <see cref="RemoveMode.DryRun"/> applies nothing: its actions (or <c>dry_run</c> when it has
+    /// none) are recorded as skipped.
     /// </summary>
     public static ActionPlan Create(GmailMessage message, IReadOnlyList<Decision> decisions, bool allowDelete = false)
     {
@@ -66,6 +70,15 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, PlannedRemova
         var deletes = new List<Decision>();
         foreach (var decision in decisions)
         {
+            if (decision.Remove == RemoveMode.DryRun)
+            {
+                // A rule on trial: everything it would do is held back, so the audit log shows it without Gmail changing.
+                var held = decision.Actions.Where(a => a.Kind != RuleActionKind.None).Select(a => a.ToString()).ToList();
+                skipped.AddRange((held.Count == 0 ? [Text(RemoveMode.DryRun)] : held)
+                    .Select(a => new SkippedAction(a, decision.Label, DryRunDecisionReason)));
+                continue;
+            }
+
             var mayHide = !isProtected || decision.AllowProtected;
             foreach (var action in decision.Actions.Where(a => a.Kind != RuleActionKind.None))
             {
@@ -127,7 +140,12 @@ public sealed record ActionPlan(IReadOnlyList<RuleAction> Actions, PlannedRemova
     /// <summary>Actions that take mail out of view: held back on protected messages, like removals.</summary>
     public static bool Hides(RuleActionKind kind) => kind is RuleActionKind.MarkRead;
 
-    private static string Text(RemoveMode remove) => remove == RemoveMode.Delete ? "delete" : "archive";
+    private static string Text(RemoveMode remove) => remove switch
+    {
+        RemoveMode.Delete => "delete",
+        RemoveMode.DryRun => "dry_run",
+        _ => "archive",
+    };
 
     private static void AddOnce(List<RuleAction> actions, RuleAction action)
     {

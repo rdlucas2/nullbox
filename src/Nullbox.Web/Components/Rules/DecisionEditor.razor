@@ -97,16 +97,17 @@
             <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
                 <MudText Typo="Typo.body2">Matching mail:</MudText>
                 <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small" data-testid="remove-switch">
+                    <MudButton Color="@(decision.Remove == RemoveMode.DryRun ? Color.Primary : Color.Default)" OnClick="@(() => SetAsync(() => decision.Remove = RemoveMode.DryRun))" data-testid="remove-dry-run">Dry run</MudButton>
                     <MudButton Color="@(decision.Remove is null ? Color.Primary : Color.Default)" OnClick="@(() => SetAsync(() => decision.Remove = null))" data-testid="remove-keep">Keep in inbox</MudButton>
                     <MudButton Color="@(decision.Remove == RemoveMode.Archive ? Color.Primary : Color.Default)" OnClick="@(() => SetAsync(() => decision.Remove = RemoveMode.Archive))" data-testid="remove-archive">Archive</MudButton>
                     <MudButton Color="@(decision.Remove == RemoveMode.Delete ? Color.Error : Color.Default)" OnClick="@(() => AskDelete(decision))" data-testid="remove-delete">Delete</MudButton>
                 </MudButtonGroup>
-                <span data-testid="remove-state" class="mud-typography-caption">@(decision.Remove switch { null => "keeps in inbox", RemoveMode.Archive => "archives", _ => "deletes" })</span>
+                <span data-testid="remove-state" class="mud-typography-caption">@(decision.Remove switch { RemoveMode.DryRun => "records only, changes nothing", null => "keeps in inbox", RemoveMode.Archive => "archives", _ => "deletes" })</span>
                 <MudSpacer />
                 <MudCheckBox T="bool" Value="@decision.AllowProtected" ValueChanged="@(v => SetAsync(() => decision.AllowProtected = v))"
                              Label="Also starred and important mail" Dense="true" data-testid="allow-protected" />
             </MudStack>
-            @if (decision.Remove is not null)
+            @if (decision.Remove is RemoveMode.Archive or RemoveMode.Delete)
             {
                 <MudText Typo="Typo.caption">Review label: <code>@Model.ReviewLabel(decision)</code></MudText>
             }
