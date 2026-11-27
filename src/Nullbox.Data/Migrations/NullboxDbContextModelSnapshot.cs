@@ -32,6 +32,59 @@ namespace Nullbox.Data.Migrations
                     b.ToTable("app_settings", (string)null);
                 });
 
+            modelBuilder.Entity("Nullbox.Data.CleanupRunRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Changed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ConfigId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("DryRun")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(225)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Matched")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SampleSize")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedUtc");
+
+                    b.ToTable("cleanup_runs", (string)null);
+                });
+
             modelBuilder.Entity("Nullbox.Data.DecisionRow", b =>
                 {
                     b.Property<long>("Id")

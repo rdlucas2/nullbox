@@ -135,6 +135,38 @@ Jev the same thing as the recorded version (same model, state fields and questio
 and Jev is not called. Otherwise Jev is asked again with the stored inputs; a message whose record lacks a field the
 draft needs is skipped, and a stored body is only the first `StoredBodyChars` characters.
 
+## Cleanup rules
+
+A port of emailBlaster's `cleanup.py`: bulk mark-read and archive of inbox mail by Gmail search, separate from the
+Jev pipeline. Rule files live in `{data}/cleanup/<id>.json` (`./data/cleanup/` on the host) in emailBlaster's own
+format, so its `cleanup_rules.json`, `cleanup_all_read.json` and `cleanup_all_unread.json` can be copied in as they are:
+
+```json
+{
+  "label": "cleanup_unread",
+  "keep": { "starred": true, "important": true, "senders": ["yourbank.com"] },
+  "rules": [
+    { "name": "Old promos", "query": "category:promotions older_than:30d", "mark_read": true, "archive": true }
+  ]
+}
+```
+
+Each rule's search becomes `in:inbox is:unread (<query>) -is:starred -is:important -from:(<senders>)`, exactly as
+`build_query` builds it (`"unread_only": false` drops `is:unread`; the `keep` flags drop their exclusions). A message
+matched by one rule isn't counted again by a later one. Matches are marked read and archived with the file's `label`
+(or `cleanup_<yyyyMMdd>`, UTC). **Cleanup never deletes**, so the delete lock doesn't come into it.
+
+Signed in as admin:
+
+- `GET /cleanup/configs`: every file with the exact Gmail search of each rule, or why the file can't be read.
+- `POST /cleanup/configs/{id}/run?sample=25` (antiforgery token): a **dry run**, counting matches per rule and the top
+  senders of the first `sample` matches. Add `dryRun=false` to apply. Applying is refused (recorded as `Blocked`)
+  while the pipeline kill switch is on; dry runs always go ahead.
+- `GET /cleanup/runs` and `GET /cleanup/runs/{id}`: queued, running and finished runs with per-rule counts.
+
+Differences from cleanup.py: the "type yes" prompt is the explicit `dryRun=false`; the default label uses the UTC date;
+a rule with both `mark_read` and `archive` off makes no Gmail call (cleanup.py sends an empty modify).
+
 ## Run in Docker
 
 nullbox is meant to run entirely in a container. The image is a multi-stage build (`sdk:10.0` → `aspnet:10.0`),
