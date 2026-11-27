@@ -39,6 +39,26 @@ public interface IGmailService
     /// <see cref="GmailOptions.AllowPermanentDelete"/> is on.
     /// </summary>
     Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
+
+    /// <summary>The mailbox's current history id (<c>users.getProfile</c>), the starting point for incremental sync.</summary>
+    Task<ulong> GetCurrentHistoryIdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ids of messages added to the inbox since <paramref name="startHistoryId"/> (<c>users.history.list</c>, all pages),
+    /// plus the history id to resume from next time. Throws <see cref="GmailHistoryExpiredException"/> when Gmail no
+    /// longer has history that far back (it answers 404 after about a week).
+    /// </summary>
+    Task<GmailHistoryChanges> GetInboxChangesAsync(ulong startHistoryId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>New inbox message ids (oldest first, de-duplicated) and the history id to resume from.</summary>
+public sealed record GmailHistoryChanges(IReadOnlyList<string> AddedMessageIds, ulong HistoryId);
+
+/// <summary>The start history id is too old for Gmail; resync with a query instead.</summary>
+public sealed class GmailHistoryExpiredException(ulong startHistoryId, Exception? inner = null)
+    : InvalidOperationException($"Gmail history from id {startHistoryId} is no longer available.", inner)
+{
+    public ulong StartHistoryId { get; } = startHistoryId;
 }
 
 public enum MessageFormat
