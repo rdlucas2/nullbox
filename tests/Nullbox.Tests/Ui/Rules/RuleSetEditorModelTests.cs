@@ -21,14 +21,15 @@ public sealed class RuleSetEditorModelTests
     }
 
     [Fact]
-    public void New_rule_sets_are_live_and_new_decisions_archive()
+    public void New_rule_sets_are_live_and_new_decisions_are_dry_runs()
     {
         var model = new RuleSetEditorModel();
 
         var decision = model.AddDecision();
 
         Assert.Equal(RuleSetMode.Live, model.Mode);
-        Assert.Equal(RemoveMode.Archive, decision.Remove);
+        Assert.Equal(RemoveMode.DryRun, decision.Remove);
+        Assert.Contains("\"remove\": \"dry_run\"", model.ToJson(), StringComparison.Ordinal);
     }
 
     [Fact]

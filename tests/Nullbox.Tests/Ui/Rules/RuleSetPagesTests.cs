@@ -78,7 +78,7 @@ public sealed class RuleSetPagesTests : IAsyncLifetime
                   "name": "Archive newsletters",
                   "when": "newsletter.noul >= 0.9",
                   "actions": ["label:nullbox/newsletter", "mark_read"],
-                  "remove": "archive"
+                  "remove": "dry_run"
                 }
               ]
             }
@@ -151,6 +151,27 @@ public sealed class RuleSetPagesTests : IAsyncLifetime
         cut.Find("[data-testid=confirm-delete-yes]").Click();
         Assert.Equal("deletes", State());
         Assert.Contains("\"remove\": \"delete\"", Json(cut), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_new_rule_starts_as_a_dry_run_and_is_promoted_to_archive()
+    {
+        var cut = _ctx.Render<RuleSetEditor>();
+        cut.Find("[data-testid=add-decision]").Click();
+        string State() => cut.Find("[data-testid=decision-0] [data-testid=remove-state]").TextContent;
+
+        Assert.Equal("records only, changes nothing", State());
+        Assert.DoesNotContain("Review label", cut.Find("[data-testid=decision-0]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("\"remove\": \"dry_run\"", Json(cut), StringComparison.Ordinal);
+
+        cut.Find("[data-testid=decision-0] [data-testid=remove-archive]").Click();
+
+        Assert.Equal("archives", State());
+        Assert.Contains("Review label", cut.Find("[data-testid=decision-0]").TextContent, StringComparison.Ordinal);
+        Assert.Contains("\"remove\": \"archive\"", Json(cut), StringComparison.Ordinal);
+
+        cut.Find("[data-testid=decision-0] [data-testid=remove-dry-run]").Click();
+        Assert.Equal("records only, changes nothing", State());
     }
 
     [Fact]

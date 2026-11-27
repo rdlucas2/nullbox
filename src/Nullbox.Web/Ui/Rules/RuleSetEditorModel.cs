@@ -49,8 +49,11 @@ public sealed class DecisionDraft
 
     public List<string> Actions { get; } = [];
 
-    /// <summary>New decisions archive (with their review label); Delete is only set after a confirmation in the editor.</summary>
-    public RemoveMode? Remove { get; set; } = RemoveMode.Archive;
+    /// <summary>
+    /// New decisions are dry runs: they record what they match and change nothing until switched to Archive (with
+    /// their review label), then Delete, which is only set after a confirmation in the editor.
+    /// </summary>
+    public RemoveMode? Remove { get; set; } = RemoveMode.DryRun;
 
     public bool AllowProtected { get; set; }
 }
@@ -69,8 +72,8 @@ public sealed class RuleSetEditorModel
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
-    /// New rule sets are live, as in <see cref="RuleSetDocument.Mode"/>: a rule is tried by letting it archive with its
-    /// review label (new decisions default to Archive), not by watching a dry run. Saving never activates a rule set.
+    /// New rule sets are live, as in <see cref="RuleSetDocument.Mode"/>: each rule is tried on its own, starting as a
+    /// dry run (<see cref="DecisionDraft.Remove"/>) and promoted to Archive, then Delete. Saving never activates a rule set.
     /// </summary>
     public RuleSetMode Mode { get; set; } = RuleSetMode.Live;
 

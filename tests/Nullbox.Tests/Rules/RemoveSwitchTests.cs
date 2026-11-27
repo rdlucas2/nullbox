@@ -37,6 +37,7 @@ public sealed class RemoveSwitchTests
     // ---- the remove switch ---------------------------------------------------------------------
 
     [Theory]
+    [InlineData("dry_run", RemoveMode.DryRun)]
     [InlineData("archive", RemoveMode.Archive)]
     [InlineData("delete", RemoveMode.Delete)]
     public void Remove_round_trips(string text, RemoveMode expected)

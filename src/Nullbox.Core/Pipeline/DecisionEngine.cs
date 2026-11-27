@@ -51,7 +51,7 @@ public static class DecisionEngine
                 [.. rule.Actions.Select(RuleAction.Parse)],
                 rule.AllowProtected,
                 rule.Remove,
-                rule.Remove is null ? null : ReviewLabels.For(ruleSet.Name, rule, i)));
+                rule.Remove is null or RemoveMode.DryRun ? null : ReviewLabels.For(ruleSet.Name, rule, i)));
             if (ruleSet.Match == DecisionMatch.First)
             {
                 break;

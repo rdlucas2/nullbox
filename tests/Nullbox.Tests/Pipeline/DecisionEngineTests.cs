@@ -193,6 +193,27 @@ public sealed class ActionPlanTests
     }
 
     [Fact]
+    public void A_dry_run_rule_holds_back_everything_it_would_do()
+    {
+        var plan = ActionPlan.Create(Plain, [R("trial", RemoveMode.DryRun, actions: ["label:promo", "mark_read"])], allowDelete: true);
+
+        Assert.False(plan.HasChanges);
+        Assert.Empty(plan.Describe());
+        Assert.Equal(
+            [new SkippedAction("label:promo", "trial", ActionPlan.DryRunDecisionReason), new SkippedAction("mark_read", "trial", ActionPlan.DryRunDecisionReason)],
+            plan.Skipped);
+    }
+
+    [Fact]
+    public void A_dry_run_rule_without_actions_is_still_recorded_and_others_still_apply()
+    {
+        var plan = ActionPlan.Create(Plain, [R("trial", RemoveMode.DryRun), R("trusted", RemoveMode.Archive)]);
+
+        Assert.Equal(["label:nullbox/review/test/trusted", "archive"], plan.Describe());
+        Assert.Equal([new SkippedAction("dry_run", "trial", ActionPlan.DryRunDecisionReason)], plan.Skipped);
+    }
+
+    [Fact]
     public void Archive_adds_the_review_label_and_removes_last()
     {
         var plan = ActionPlan.Create(Plain, [R("junk", RemoveMode.Archive, actions: "mark_read")]);

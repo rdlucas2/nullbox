@@ -87,6 +87,25 @@ public sealed class MessagePipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_dry_run_rule_in_a_live_rule_set_records_the_match_and_changes_nothing()
+    {
+        var promo = Promo(RuleSetMode.Live);
+        await _db.ActivateAsync(promo with { Decisions = [.. promo.Decisions.Select(d => d.Remove is null ? d : d with { Remove = RemoveMode.DryRun })] });
+        _gmail.Add("m1");
+
+        await Pipeline().ProcessAsync("m1", default);
+
+        Assert.Empty(_gmail.Changes);
+        var record = Assert.Single(await _db.Log().ListAsync("m1"));
+        Assert.Equal((RuleSetMode.Live, DecisionOutcome.NoChange), (record.Mode, record.Outcome));
+        Assert.Equal(["Archive confident promos"], record.Decisions);
+        Assert.Empty(record.Actions);
+        Assert.Equal(
+            ["label:nullbox/promo (Archive confident promos): the rule is in dry run; recorded only", "mark_read (Archive confident promos): the rule is in dry run; recorded only"],
+            record.Skipped);
+    }
+
+    [Fact]
     public async Task A_trash_rule_with_the_delete_lock_off_trashes()
     {
         _gmailOptions.AllowDelete = true;

@@ -65,7 +65,7 @@
             <label class="mud-typography-caption d-block">Mode saved with this version</label>
             <select class="mud-input-slot pa-1" value="@_model.Mode" @onchange="@(e => Change(() => _model.Mode = Enum.Parse<RuleSetMode>((string)e.Value!)))" data-testid="mode">
                 <option value="@RuleSetMode.DryRun">Dry run: record decisions only</option>
-                <option value="@RuleSetMode.Live">Live: apply actions to Gmail (rules archive until switched to Delete)</option>
+                <option value="@RuleSetMode.Live">Live: apply each rule as its switch says (new rules are dry runs)</option>
             </select>
         </MudItem>
         <MudItem xs="12">
