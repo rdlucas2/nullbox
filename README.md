@@ -36,8 +36,8 @@ The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /ap
 ## Web UI
 
 Sign in at `/login` with `ADMIN_PASSWORD`; every UI page redirects there until you do. The shell is Blazor
-(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Saved rules, Test, Audit, Jobs and Settings, a
-light/dark toggle (follows the system setting until you switch it) and a sign-out button.
+(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Saved rules, Test, Audit, Cleanup, Jobs and
+Settings, a light/dark toggle (follows the system setting until you switch it) and a sign-out button.
 
 The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
 when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
@@ -45,8 +45,27 @@ token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports r
 ([docs/rules.md](docs/rules.md#editing-in-the-ui)). Saved rules (`/saved-rules`) keeps the fixed sender and recipient
 rules that act without Jev, with a test box for a sample From, To and Subject
 ([docs/rules.md](docs/rules.md#saved-rules)). Test (`/test`, and the Test tab in the editor) runs a rule set over
-real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)). Audit and Jobs are
-placeholders that later milestones fill in; Jobs links to the Hangfire dashboard meanwhile.
+real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)).
+
+The ops pages ask before anything that changes Gmail or deletes data:
+
+- **Audit (`/audit`):** the decision log with the same filters as `GET /pipeline/decisions`, and a detail panel with
+  Jev's answers, the state sent and the actions. A decision applied in live mode can be undone: the message goes back
+  in the inbox (out of Trash for a delete), gets UNREAD back and loses the star and labels the decision added. Steps
+  the message's labels at the time show would change nothing are left out. Each undo is logged as an `undone` record
+  with the steps taken, so it shows in the log and the same decision can't be undone twice. `?messageId=` and
+  `?ruleSet=` start it filtered.
+- **Cleanup (`/cleanup`):** edit the `{data}/cleanup/*.json` files in a form or as JSON, dry-run one with a top-senders
+  sample, and apply it only after a finished dry run of that file. The Gmail filters section dry-runs and applies the
+  filter sync.
+- **Jobs (`/jobs`):** the kill switch (pausing is immediate, resuming asks), pausing the inbox poll, its cron schedule,
+  and each recurring job's last and next run with Run now. It still links to the Hangfire dashboard.
+- **Settings (`/settings`):** each Gmail token's state with upload and disconnect, and the delete lock, permanent
+  delete, filter sync, Jev budgets and audit retention. Saved values go to `{data}/settings.json`.
+
+`{data}/settings.json` is read as the last configuration source when the app starts, so it wins over appsettings.json
+and environment variables. Only the keys the pages offer are written; delete the file to go back to your
+configuration. Saved settings apply after a restart, except the poll schedule, which also applies straight away.
 
 ## Configuration
 

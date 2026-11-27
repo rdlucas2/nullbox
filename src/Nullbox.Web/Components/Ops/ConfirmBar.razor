@@ -1,0 +1,34 @@
+@* An inline "are you sure?" bar: the question, a confirm button and Cancel. *@
+<MudAlert Severity="@Severity" Class="mb-3" data-testid="@TestId">
+    @ChildContent
+    <MudStack Row="true" Class="mt-2">
+        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="@Color" OnClick="OnConfirm" Disabled="@Busy" data-testid="@($"{TestId}-yes")">@ConfirmLabel</MudButton>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="OnCancel" Disabled="@Busy" data-testid="@($"{TestId}-no")">Cancel</MudButton>
+    </MudStack>
+</MudAlert>
+
+@code {
+    [Parameter, EditorRequired]
+    public string TestId { get; set; } = "confirm";
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string ConfirmLabel { get; set; } = "Confirm";
+
+    [Parameter]
+    public Severity Severity { get; set; } = Severity.Warning;
+
+    [Parameter]
+    public Color Color { get; set; } = Color.Warning;
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+}

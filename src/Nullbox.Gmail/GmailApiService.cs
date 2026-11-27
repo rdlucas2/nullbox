@@ -236,6 +236,20 @@ public sealed partial class GmailApiService : IGmailService
         }
     }
 
+    public async Task UntrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
+    {
+        var ids = messageIds.Distinct().ToList();
+        foreach (var id in ids)
+        {
+            await _retry.ExecuteAsync(ct => _gmail.Users.Messages.Untrash(Me, id).ExecuteAsync(ct), cancellationToken);
+        }
+
+        if (ids.Count > 0)
+        {
+            _logger.LogInformation("Restored {Count} messages from Trash", ids.Count);
+        }
+    }
+
     public async Task BatchDeleteAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
     {
         if (!_options.AllowDelete)

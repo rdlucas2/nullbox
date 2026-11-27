@@ -42,6 +42,13 @@ public interface IGmailCredentialStore
     /// <summary>Validates an uploaded authorized-user token, proves it with <c>users.getProfile</c>, then saves it.</summary>
     /// <returns>The account's email address.</returns>
     Task<string> ReplaceTokenAsync(GmailTokenKind kind, string tokenJson, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the token file, so jobs stop using Gmail until a new token is uploaded. Google keeps the grant until it
+    /// is removed under the Google account's third-party access.
+    /// </summary>
+    /// <returns>False when there was no token to delete.</returns>
+    bool Disconnect(GmailTokenKind kind);
 }
 
 /// <summary>Thrown when no token file exists for the requested kind.</summary>

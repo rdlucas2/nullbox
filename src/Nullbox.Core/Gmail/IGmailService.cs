@@ -64,6 +64,9 @@ public interface IGmailService : IGmailReader
     /// </summary>
     Task TrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
 
+    /// <summary>Takes messages back out of Trash (undo). Allowed whatever the delete lock says, since it restores mail.</summary>
+    Task UntrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Permanently deletes messages. Throws <see cref="DeleteLockedException"/> while the delete lock is on, and
     /// <see cref="PermanentDeleteDisabledException"/> unless <see cref="GmailOptions.AllowPermanentDelete"/> is also on.

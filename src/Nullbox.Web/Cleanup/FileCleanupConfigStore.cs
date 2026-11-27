@@ -34,6 +34,31 @@ public sealed partial class FileCleanupConfigStore(string directory) : ICleanupC
     public CleanupConfigEntry? Get(string id)
         => IsValidId(id) && File.Exists(PathFor(id)) ? Read(id) : null;
 
+    public string? GetText(string id)
+        => IsValidId(id) && File.Exists(PathFor(id)) && new FileInfo(PathFor(id)).Length <= MaxFileBytes ? File.ReadAllText(PathFor(id)) : null;
+
+    public CleanupConfigEntry Save(string id, string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        if (!IsValidId(id))
+        {
+            throw new CleanupConfigException("A cleanup file name is letters, digits, - and _ (at most 100), starting with a letter or digit.");
+        }
+
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > MaxFileBytes)
+        {
+            throw new CleanupConfigException($"Cleanup files can be at most {MaxFileBytes / 1024} KB.");
+        }
+
+        var config = CleanupConfig.Parse(json);
+        System.IO.Directory.CreateDirectory(Directory);
+        var path = PathFor(id);
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, json);
+        File.Move(temp, path, overwrite: true);
+        return new CleanupConfigEntry(id, config, null);
+    }
+
     public static bool IsValidId(string? id) => id is not null && IdPattern().IsMatch(id);
 
     private string PathFor(string id) => Path.Combine(Directory, id + ".json");

@@ -50,6 +50,44 @@ public sealed class FileCleanupConfigStoreTests : IDisposable
     [Fact]
     public void A_missing_folder_lists_nothing()
         => Assert.Empty(new FileCleanupConfigStore(Path.Combine(_dir, "nope")).List());
+
+    [Fact]
+    public void Saved_files_read_back_as_text_and_as_config()
+    {
+        var store = new FileCleanupConfigStore(Path.Combine(_dir, "new-folder"));
+        var json = Fixture("cleanup_all_read.json");
+
+        var entry = store.Save("my-rules", json);
+
+        Assert.Equal("my-rules", entry.Id);
+        Assert.Equal(json, store.GetText("my-rules"));
+        Assert.Equal(entry.Config!.Rules.Count, store.Get("my-rules")!.Config!.Rules.Count);
+        Assert.False(File.Exists(Path.Combine(store.Directory, "my-rules.json.tmp")));
+    }
+
+    [Theory]
+    [InlineData("../escape", "{\"rules\":[{\"name\":\"a\",\"query\":\"b\"}]}", "file name")]
+    [InlineData("ok", "{\"rules\":[]}", "rules")]
+    [InlineData("ok", "not json", "JSON")]
+    public void Bad_names_and_invalid_files_are_not_saved(string id, string json, string expected)
+    {
+        var store = new FileCleanupConfigStore(_dir);
+
+        var error = Assert.Throws<CleanupConfigException>(() => store.Save(id, json));
+
+        Assert.Contains(expected, error.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(_dir));
+        Assert.Null(store.GetText(id));
+    }
+
+    [Fact]
+    public void Oversized_files_are_refused()
+    {
+        var store = new FileCleanupConfigStore(_dir);
+        var big = "{\"rules\":[{\"name\":\"a\",\"query\":\"" + new string('x', (int)FileCleanupConfigStore.MaxFileBytes) + "\"}]}";
+
+        Assert.Throws<CleanupConfigException>(() => store.Save("big", big));
+    }
 }
 
 public sealed class RunCleanupJobTests : IAsyncLifetime
@@ -180,5 +218,9 @@ public sealed class RunCleanupJobTests : IAsyncLifetime
         public IReadOnlyList<CleanupConfigEntry> List() => [.. Entries.Values];
 
         public CleanupConfigEntry? Get(string id) => Entries.GetValueOrDefault(id);
+
+        public string? GetText(string id) => Entries.GetValueOrDefault(id)?.Config?.ToJson();
+
+        public CleanupConfigEntry Save(string id, string json) => Entries[id] = new CleanupConfigEntry(id, CleanupConfig.Parse(json), null);
     }
 }

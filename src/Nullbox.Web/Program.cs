@@ -28,6 +28,7 @@ if (args is [DataBackup.Flag, ..])
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddNullboxRuntimeSettings();
 
 builder.Services.AddNullboxOptions(builder.Configuration);
 builder.Services.AddNullboxDataProtection(builder.Configuration);

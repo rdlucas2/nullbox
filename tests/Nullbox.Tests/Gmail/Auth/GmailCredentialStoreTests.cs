@@ -159,6 +159,21 @@ public sealed class GmailCredentialStoreTests : IDisposable
     }
 
     [Fact]
+    public void Disconnect_deletes_the_token_and_the_cached_credential()
+    {
+        WriteToken(TokenSamples.EmailBlasterToken(DateTimeOffset.UtcNow.AddMinutes(30)));
+        var store = Store();
+        Assert.Equal(GmailAuthState.Ready, store.GetStatus(GmailTokenKind.Primary).State);
+
+        Assert.True(store.Disconnect(GmailTokenKind.Primary));
+
+        Assert.False(File.Exists(_files.TokenPath(GmailTokenKind.Primary)));
+        Assert.Equal(GmailAuthState.NotConfigured, store.GetStatus(GmailTokenKind.Primary).State);
+        Assert.Throws<GmailNotConfiguredException>(() => store.GetCredential(GmailTokenKind.Primary));
+        Assert.False(store.Disconnect(GmailTokenKind.Primary));
+    }
+
+    [Fact]
     public async Task Replace_token_tests_with_get_profile_then_saves()
     {
         var store = Store();

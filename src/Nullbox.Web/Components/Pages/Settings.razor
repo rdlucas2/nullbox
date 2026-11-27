@@ -1,11 +1,268 @@
 @page "/settings"
+@using System.Globalization
+@using Microsoft.Extensions.Options
+@using Nullbox.Core.Gmail
+@using Nullbox.Core.Jev
+@using Nullbox.Core.Options
+@using Nullbox.Jev
+@using Nullbox.Web.Settings
+@inject IServiceProvider Services
+@inject IOptions<NullboxOptions> Options
+@inject IOptions<GmailOptions> GmailOptions
+@inject IOptions<JevOptions> JevOptions
+@inject RuntimeSettingsFile SavedSettings
 
 <PageTitle>Settings · nullbox</PageTitle>
 
 <MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-4">Settings</MudText>
-<MudList T="string">
-    <MudListItem T="string" Icon="@Icons.Material.Filled.Email">
-        <a href="/settings/gmail" target="_self">Gmail connection</a>: upload a new token.json or check which scopes it has.
-    </MudListItem>
-</MudList>
-<MudText Typo="Typo.body2" Class="mt-2">Feature flags, the Jev budget and retention settings arrive with M3-17.</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="settings-message">@_message</MudAlert>
+}
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _error = null)" data-testid="settings-error">@_error</MudAlert>
+}
+
+<MudPaper Outlined="true" Class="pa-3 mb-4" data-testid="gmail-connection">
+    <MudText Typo="Typo.h6">Gmail connection</MudText>
+    @if (Credentials is null)
+    {
+        <MudText Typo="Typo.body2">Gmail isn't set up in this app.</MudText>
+    }
+    else
+    {
+        @foreach (var status in _tokens)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="my-2" Wrap="Wrap.Wrap" data-testid="@($"token-{status.Kind}")">
+                <MudText Typo="Typo.body2" Style="min-width: 14rem">
+                    <b>@(status.Kind == GmailTokenKind.Primary ? "Mail (token.json)" : "Filters (token_filters.json)")</b>:
+                    <span data-testid="token-state">@State(status.State)</span>
+                    @if (status.Scopes.Count > 0)
+                    {
+                        <span class="mud-typography-caption"> · @string.Join(", ", status.Scopes.Select(s => s.Split('/')[^1]))</span>
+                    }
+                </MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Href="/settings/gmail" Target="_self" data-testid="token-upload">@(status.State == GmailAuthState.NotConfigured ? "Connect" : "Replace token")</MudButton>
+                @if (status.State != GmailAuthState.NotConfigured)
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => _confirmDisconnect = status.Kind)" data-testid="token-disconnect">Disconnect</MudButton>
+                }
+            </MudStack>
+        }
+        @if (_confirmDisconnect is { } kind)
+        {
+            <ConfirmBar TestId="confirm-disconnect" ConfirmLabel="Disconnect" Color="Color.Error" OnConfirm="@(() => Disconnect(kind))" OnCancel="@(() => _confirmDisconnect = null)">
+                @(kind == GmailTokenKind.Primary
+                    ? "This deletes token.json: the inbox poll, rule sets and cleanups stop until you upload a new one."
+                    : "This deletes token_filters.json: the filter sync stops until you upload a new one.")
+                To also revoke the grant, remove nullbox under your Google account's third-party access.
+            </ConfirmBar>
+        }
+        <MudText Typo="Typo.caption"><a href="/settings/gmail" target="_self">Gmail settings</a> uploads a token.json and shows its expiry.</MudText>
+    }
+</MudPaper>
+
+<MudPaper Outlined="true" Class="pa-3 mb-4" data-testid="app-settings">
+    <MudText Typo="Typo.h6">Switches and limits</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3">
+        Saved to settings.json in the data directory, which wins over appsettings.json and environment variables.
+        They take effect when nullbox restarts (e.g. <code>docker compose restart</code>).
+    </MudText>
+
+    @foreach (var field in Fields)
+    {
+        var saved = _draft[field.Key];
+        var now = Effective(field.Key);
+        <div class="d-flex flex-wrap align-center gap-3 my-2" data-testid="@($"setting-{Short(field.Key)}")">
+            @if (field.Kind == RuntimeSettingKind.Flag)
+            {
+                <label class="mud-typography-body2" style="min-width: 18rem">
+                    <input type="checkbox" checked="@(saved == "true")" @onchange="@(e => _draft[field.Key] = e.Value is true ? "true" : "false")" data-testid="setting-input" />
+                    <b>@field.Title</b>
+                </label>
+            }
+            else
+            {
+                <label class="mud-typography-body2" style="min-width: 18rem"><b>@field.Title</b>
+                    <input class="d-block" type="number" min="@RuntimeSettingsFile.Specs[field.Key].Min" value="@saved" @onchange="@(e => _draft[field.Key] = (string?)e.Value ?? string.Empty)" style="width: 10rem" data-testid="setting-input" />
+                </label>
+            }
+            <MudText Typo="Typo.caption" Style="flex: 1 1 20rem">@field.Help</MudText>
+            @if (saved != now)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" data-testid="setting-pending">@(_saved.ContainsKey(field.Key) && _saved[field.Key] == saved ? "applies after restart" : "not saved")</MudChip>
+            }
+        </div>
+    }
+
+    @if (_budget is { } budget)
+    {
+        <MudText Typo="Typo.caption" Class="d-block mt-2" data-testid="jev-usage">
+            Jev today: @budget.InputTokensToday.ToString("N0", CultureInfo.InvariantCulture) of @budget.MaxInputTokensPerDay.ToString("N0", CultureInfo.InvariantCulture) input tokens,
+            @budget.RequestsLastHour of @budget.MaxRequestsPerHour requests in the last hour.
+        </MudText>
+    }
+
+    @if (_confirmRisky.Count > 0)
+    {
+        <ConfirmBar TestId="confirm-settings" ConfirmLabel="Save anyway" Color="Color.Error" OnConfirm="@(() => SaveAsync(confirmed: true))" OnCancel="@(() => _confirmRisky = [])">
+            <ul>@foreach (var risk in _confirmRisky) { <li>@risk</li> }</ul>
+        </ConfirmBar>
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" OnClick="@(() => SaveAsync(confirmed: false))" Disabled="@(!Dirty)" data-testid="settings-save">Save</MudButton>
+</MudPaper>
+
+@code {
+    private sealed record Field(string Key, RuntimeSettingKind Kind, string Title, string Help);
+
+    private static readonly Field[] Fields =
+    [
+        new(RuntimeSettingsFile.AllowDelete, RuntimeSettingKind.Flag, "Allow moving mail to Trash",
+            "Off is the delete lock: Delete rules archive instead, and bulk deletes are refused."),
+        new(RuntimeSettingsFile.AllowPermanentDelete, RuntimeSettingKind.Flag, "Allow permanent delete",
+            "Bulk deletes only, never rules; skips Trash, so it can't be undone. Also needs Trash allowed."),
+        new(RuntimeSettingsFile.AllowFilterSync, RuntimeSettingKind.Flag, "Allow the filter sync",
+            "Lets the filter sync create labels and Gmail filters, which file new mail before nullbox sees it."),
+        new(RuntimeSettingsFile.JevMaxInputTokensPerDay, RuntimeSettingKind.Number, "Jev input tokens per day",
+            "Daily (UTC) Jev budget; messages wait for the next day once it's used up."),
+        new(RuntimeSettingsFile.JevMaxRequestsPerHour, RuntimeSettingKind.Number, "Jev requests per hour", "Most Jev calls in any hour."),
+        new(RuntimeSettingsFile.AuditRetentionDays, RuntimeSettingKind.Number, "Keep decisions for (days)",
+            "Older decision records are deleted by the daily purge; 0 keeps them forever."),
+    ];
+
+    private IGmailCredentialStore? Credentials => Services.GetService<IGmailCredentialStore>();
+
+    private IReadOnlyList<GmailCredentialStatus> _tokens = [];
+    private GmailTokenKind? _confirmDisconnect;
+    private IReadOnlyDictionary<string, string> _saved = new Dictionary<string, string>();
+    private readonly Dictionary<string, string> _draft = [];
+    private List<string> _confirmRisky = [];
+    private JevBudgetStatus? _budget;
+    private string? _message;
+    private string? _error;
+
+    private bool Dirty => Fields.Any(f => _draft[f.Key] != (_saved.TryGetValue(f.Key, out var v) ? v : Effective(f.Key)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        LoadTokens();
+        LoadSaved();
+        if (Services.GetService<IJevBudget>() is { } budget)
+        {
+            try
+            {
+                _budget = await budget.GetStatusAsync();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException)
+            {
+                _budget = null;
+            }
+        }
+    }
+
+    private void LoadTokens()
+        => _tokens = Credentials is { } store ? [store.GetStatus(GmailTokenKind.Primary), store.GetStatus(GmailTokenKind.Filters)] : [];
+
+    private void LoadSaved()
+    {
+        _saved = SavedSettings.Load();
+        foreach (var field in Fields)
+        {
+            _draft[field.Key] = _saved.TryGetValue(field.Key, out var value) ? value : Effective(field.Key);
+        }
+    }
+
+    /// <summary>The value the running app uses.</summary>
+    private string Effective(string key) => key switch
+    {
+        RuntimeSettingsFile.AllowDelete => Flag(GmailOptions.Value.AllowDelete),
+        RuntimeSettingsFile.AllowPermanentDelete => Flag(GmailOptions.Value.AllowPermanentDelete),
+        RuntimeSettingsFile.AllowFilterSync => Flag(GmailOptions.Value.AllowFilterSync),
+        RuntimeSettingsFile.JevMaxInputTokensPerDay => JevOptions.Value.MaxInputTokensPerDay.ToString(CultureInfo.InvariantCulture),
+        RuntimeSettingsFile.JevMaxRequestsPerHour => JevOptions.Value.MaxRequestsPerHour.ToString(CultureInfo.InvariantCulture),
+        RuntimeSettingsFile.AuditRetentionDays => Options.Value.Audit.RetentionDays.ToString(CultureInfo.InvariantCulture),
+        _ => string.Empty,
+    };
+
+    private void Disconnect(GmailTokenKind kind)
+    {
+        _confirmDisconnect = null;
+        _message = Credentials!.Disconnect(kind) ? "Disconnected. Upload a new token on the Gmail settings page to reconnect." : "There was no token to remove.";
+        LoadTokens();
+    }
+
+    private Task SaveAsync(bool confirmed)
+    {
+        var changes = new Dictionary<string, string?>();
+        foreach (var field in Fields)
+        {
+            var value = _draft[field.Key].Trim();
+            if (RuntimeSettingsFile.Check(field.Key, value) is { } error)
+            {
+                _error = error;
+                _confirmRisky = [];
+                return Task.CompletedTask;
+            }
+
+            if (value != (_saved.TryGetValue(field.Key, out var saved) ? saved : Effective(field.Key)))
+            {
+                changes[field.Key] = value;
+            }
+        }
+
+        var risks = new List<string>();
+        if (Turning(changes, RuntimeSettingsFile.AllowDelete))
+        {
+            risks.Add("Delete rules in live rule sets will move mail to Trash, which Gmail empties after 30 days.");
+        }
+
+        if (Turning(changes, RuntimeSettingsFile.AllowPermanentDelete))
+        {
+            risks.Add("Bulk deletes will remove mail for good, without Trash.");
+        }
+
+        if (Turning(changes, RuntimeSettingsFile.AllowFilterSync))
+        {
+            risks.Add("Syncing filters will create Gmail filters that skip the inbox for matching mail.");
+        }
+
+        if (!confirmed && risks.Count > 0)
+        {
+            _confirmRisky = risks;
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            SavedSettings.Save(changes);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            _error = $"Not saved: {ex.Message}";
+            return Task.CompletedTask;
+        }
+
+        _confirmRisky = [];
+        _error = null;
+        _message = "Saved. Restart nullbox for the changes to take effect.";
+        LoadSaved();
+        return Task.CompletedTask;
+    }
+
+    private static bool Turning(Dictionary<string, string?> changes, string key) => changes.TryGetValue(key, out var value) && value == "true";
+
+    private static string Flag(bool value) => value ? "true" : "false";
+
+    private static string Short(string key) => key[(key.LastIndexOf(':') + 1)..];
+
+    private static string State(GmailAuthState state) => state switch
+    {
+        GmailAuthState.Ready => "connected",
+        GmailAuthState.NotConfigured => "not connected",
+        GmailAuthState.ReauthorizationRequired => "needs re-authorizing",
+        _ => "invalid file",
+    };
+}

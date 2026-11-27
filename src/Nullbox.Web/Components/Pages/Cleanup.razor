@@ -1,0 +1,570 @@
+@page "/cleanup"
+@implements IDisposable
+@using System.Globalization
+@using Nullbox.Core.Cleanup
+@using Nullbox.Core.Filters
+@using Nullbox.Web.Bulk
+@using Nullbox.Web.Cleanup
+@inject ICleanupConfigStore Configs
+@inject ICleanupRunLog Runs
+@inject CleanupLauncher Launcher
+@inject IServiceProvider Services
+@inject IServiceScopeFactory Scopes
+
+<PageTitle>Cleanup & filters · nullbox</PageTitle>
+
+<MudText Typo="Typo.h4" Tag="@("h1")" Class="mb-2">Cleanup & filters</MudText>
+<MudText Typo="Typo.body2" Class="mb-3">
+    Cleanup files (emailBlaster's format, in the data directory's cleanup folder) mark matching mail read and archive it.
+    Dry-run a file to see how much it matches and from whom, then apply it.
+</MudText>
+
+@if (_message is not null)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _message = null)" data-testid="cleanup-message">@_message</MudAlert>
+}
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" ShowCloseIcon="true" CloseIconClicked="@(() => _error = null)" data-testid="cleanup-error">@_error</MudAlert>
+}
+
+<MudPaper Outlined="true" Class="pa-3 mb-4">
+    <div class="d-flex flex-wrap gap-3 align-end mb-3">
+        <label class="mud-typography-body2">Cleanup file
+            <select class="d-block" value="@(_id ?? string.Empty)" @onchange="@(e => Open((string?)e.Value))" style="min-width: 14rem" data-testid="cleanup-file">
+                <option value="">Choose…</option>
+                @foreach (var entry in _entries)
+                {
+                    <option value="@entry.Id">@entry.Id@(entry.Error is null ? null : " (invalid)")</option>
+                }
+            </select>
+        </label>
+        <label class="mud-typography-body2">or a new one
+            <input class="d-block" value="@_newId" @onchange="@(e => _newId = (string?)e.Value)" placeholder="old-promos" style="width: 12rem" data-testid="cleanup-new-id" />
+        </label>
+        <MudButton Variant="Variant.Outlined" OnClick="New" Disabled="@string.IsNullOrWhiteSpace(_newId)" data-testid="cleanup-new">New file</MudButton>
+    </div>
+
+    @if (_id is not null && _form is not null)
+    {
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" data-testid="cleanup-invalid">@_loadError Fix it in the JSON tab.</MudAlert>
+        }
+        <MudTabs Outlined="true" KeepPanelsAlive="true" TabPanelsClass="pa-3" @bind-ActivePanelIndex="_tab">
+            <MudTabPanel Text="Form">
+                <div class="d-flex flex-wrap gap-3 align-end mb-2">
+                    <label class="mud-typography-body2">Archive label
+                        <input class="d-block" value="@_form.Label" @onchange="@(e => _form.Label = (string?)e.Value)" placeholder="cleanup_yyyymmdd" style="width: 14rem" data-testid="form-label" />
+                    </label>
+                    <label class="mud-typography-body2"><input type="checkbox" checked="@_form.KeepStarred" @onchange="@(e => _form.KeepStarred = e.Value is true)" data-testid="form-keep-starred" /> Keep starred</label>
+                    <label class="mud-typography-body2"><input type="checkbox" checked="@_form.KeepImportant" @onchange="@(e => _form.KeepImportant = e.Value is true)" data-testid="form-keep-important" /> Keep important</label>
+                </div>
+                <label class="mud-typography-body2 d-block mb-3">Senders to keep (one per line or comma-separated)
+                    <textarea class="d-block pa-1" style="width: 100%; min-height: 3rem" value="@_form.Senders" @onchange="@(e => _form.Senders = (string?)e.Value ?? string.Empty)" data-testid="form-senders"></textarea>
+                </label>
+                @for (var i = 0; i < _form.Rules.Count; i++)
+                {
+                    var index = i;
+                    var rule = _form.Rules[i];
+                    <MudPaper Outlined="true" Class="pa-2 mb-2" data-testid="@($"form-rule-{index}")">
+                        <div class="d-flex flex-wrap gap-3 align-end">
+                            <label class="mud-typography-body2">Name
+                                <input class="d-block" value="@rule.Name" @onchange="@(e => rule.Name = (string?)e.Value ?? string.Empty)" style="width: 12rem" data-testid="rule-name" />
+                            </label>
+                            <label class="mud-typography-body2" style="flex: 1 1 16rem">Gmail search
+                                <input class="d-block" value="@rule.Query" @onchange="@(e => rule.Query = (string?)e.Value ?? string.Empty)" style="width: 100%" data-testid="rule-query" />
+                            </label>
+                            <label class="mud-typography-body2"><input type="checkbox" checked="@rule.UnreadOnly" @onchange="@(e => rule.UnreadOnly = e.Value is true)" data-testid="rule-unread-only" /> Unread only</label>
+                            <label class="mud-typography-body2"><input type="checkbox" checked="@rule.MarkRead" @onchange="@(e => rule.MarkRead = e.Value is true)" data-testid="rule-mark-read" /> Mark read</label>
+                            <label class="mud-typography-body2"><input type="checkbox" checked="@rule.Archive" @onchange="@(e => rule.Archive = e.Value is true)" data-testid="rule-archive" /> Archive</label>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" OnClick="@(() => _form.Rules.RemoveAt(index))" aria-label="Remove rule" data-testid="rule-remove" />
+                        </div>
+                        @if (_form.Preview(rule) is { } query)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block mt-1">Searches <code data-testid="rule-preview">@query</code></MudText>
+                        }
+                    </MudPaper>
+                }
+                <MudStack Row="true" Class="mt-2">
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => _form.Rules.Add(new RuleForm()))" data-testid="rule-add">Add rule</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveFormAsync" data-testid="form-save">Save</MudButton>
+                </MudStack>
+                <MudText Typo="Typo.caption" Class="d-block mt-1">Saving from the form rewrites the file, without its comments.</MudText>
+            </MudTabPanel>
+            <MudTabPanel Text="JSON">
+                <textarea class="mud-typography-body2 pa-2" style="width: 100%; min-height: 18rem; font-family: monospace;" spellcheck="false"
+                          value="@_json" @onchange="@(e => _json = (string?)e.Value ?? string.Empty)" data-testid="cleanup-json"></textarea>
+                <MudStack Row="true" Class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveJsonAsync" data-testid="json-save">Save JSON</MudButton>
+                    <MudButton Variant="Variant.Outlined" OnClick="ApplyJson" data-testid="json-to-form">Load into the form</MudButton>
+                </MudStack>
+            </MudTabPanel>
+        </MudTabs>
+
+        @if (Saved is { Config: not null })
+        {
+            <MudDivider Class="my-3" />
+            <div class="d-flex flex-wrap gap-3 align-end">
+                <label class="mud-typography-body2">Top senders from
+                    <input class="d-block" type="number" min="0" max="@CleanupLauncher.MaxSampleSize" value="@_sample" @onchange="@(e => _sample = int.TryParse((string?)e.Value, out var n) ? Math.Clamp(n, 0, CleanupLauncher.MaxSampleSize) : 0)" style="width: 6rem" data-testid="cleanup-sample" />
+                </label>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => StartAsync(dryRun: true))" Disabled="@(_watching is not null)" data-testid="cleanup-dry-run">Dry run</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => _confirmApply = true)" Disabled="@(LastDryRun is null || _watching is not null)" data-testid="cleanup-apply">Apply</MudButton>
+                @if (LastDryRun is null)
+                {
+                    <MudText Typo="Typo.caption">Dry-run this file before applying it.</MudText>
+                }
+            </div>
+            @if (_confirmApply && LastDryRun is { } dry)
+            {
+                <div class="mt-3">
+                    <ConfirmBar TestId="confirm-apply" ConfirmLabel="@($"Apply {_id}")" OnConfirm="@(() => StartAsync(dryRun: false))" OnCancel="@(() => _confirmApply = false)">
+                        The dry run @(dry.FinishedUtc is { } at ? $"at {Time(at)}" : null) matched @dry.Matched message(s). Applying changes them in Gmail now:
+                        <ul>@foreach (var rule in dry.Rules) { <li>@rule.Name: @rule.Matched, @rule.Actions</li> }</ul>
+                        Archived mail gets the label @(dry.Label), so it can be found and moved back.
+                    </ConfirmBar>
+                </div>
+            }
+        }
+    }
+</MudPaper>
+
+@if (_watching is not null)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-2" data-testid="cleanup-running" />
+}
+
+@if (_shown is { } run)
+{
+    <MudPaper Outlined="true" Class="pa-3 mb-4" data-testid="cleanup-result">
+        <MudText Typo="Typo.subtitle1">
+            @(run.DryRun ? "Dry run" : "Run") of @run.ConfigId: @Status(run.Status)@(run.Status == CleanupRunStatus.Completed ? $", {run.Matched} matched, {run.Changed} changed" : null)
+        </MudText>
+        @if (run.Error is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="my-2" data-testid="cleanup-result-error">@run.Error</MudAlert>
+        }
+        @if (run.Rules.Count > 0)
+        {
+            <MudSimpleTable Dense="true" Class="mt-2">
+                <thead><tr><th>Rule</th><th>Matched</th><th>Changed</th><th>Top senders</th></tr></thead>
+                <tbody>
+                    @foreach (var rule in run.Rules)
+                    {
+                        <tr data-testid="@($"cleanup-result-{rule.Name}")">
+                            <td>@rule.Name <div class="mud-typography-caption"><code>@rule.Query</code></div></td>
+                            <td>@rule.Matched</td>
+                            <td>@rule.Changed</td>
+                            <td>@(rule.TopSenders.Count == 0 ? "–" : string.Join(", ", rule.TopSenders.Select(s => $"{s.Sender} ({s.Count})")))</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudPaper>
+}
+
+<MudText Typo="Typo.h6" Class="mb-2">Recent cleanup runs</MudText>
+@if (_runs.Count == 0)
+{
+    <MudText Typo="Typo.body2" Class="mb-4" data-testid="cleanup-runs-empty">None yet.</MudText>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Outlined="true" Class="mb-4" data-testid="cleanup-runs">
+        <thead><tr><th>Started (UTC)</th><th>File</th><th>Kind</th><th>Status</th><th>Matched</th><th>Changed</th></tr></thead>
+        <tbody>
+            @foreach (var r in _runs)
+            {
+                <tr @onclick="@(() => _shown = r)" style="cursor: pointer" data-testid="@($"cleanup-run-{r.Id}")">
+                    <td>@Time(r.CreatedUtc)</td>
+                    <td>@r.ConfigId</td>
+                    <td>@(r.DryRun ? "dry run" : "applied")</td>
+                    <td>@Status(r.Status)</td>
+                    <td>@r.Matched</td>
+                    <td>@r.Changed</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+<MudPaper Outlined="true" Class="pa-3" data-testid="filters">
+    <MudText Typo="Typo.h6">Gmail filters</MudText>
+    @if (Filters is not { } file)
+    {
+        <MudText Typo="Typo.body2">The filter sync isn't set up in this app.</MudText>
+    }
+    else if (!file.Exists)
+    {
+        <MudText Typo="Typo.body2" data-testid="filters-missing">There's no filters.json in the data directory. Copy emailBlaster's filters.json there to sync it.</MudText>
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Each definition in filters.json becomes a Gmail filter that labels matching new mail and skips the inbox. Dry-run the sync to see what it would create.
+        </MudText>
+        @if (_filterError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2" data-testid="filters-error">@_filterError</MudAlert>
+        }
+        <MudSimpleTable Dense="true" Outlined="true" data-testid="filters-table">
+            <thead><tr><th>Label</th><th>Search</th><th>Mark read</th><th>Sync</th></tr></thead>
+            <tbody>
+                @foreach (var filter in _filters)
+                {
+                    <tr data-testid="filter-row">
+                        <td>@filter.Label</td>
+                        <td><code>@filter.Query</code></td>
+                        <td>@(filter.MarkRead ? "yes" : "no")</td>
+                        <td data-testid="filter-status">@SyncStatus(filter)</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        <MudStack Row="true" Class="mt-2" AlignItems="AlignItems.Center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => SyncFiltersAsync(dryRun: true))" Disabled="@(_filters.Count == 0 || _syncing)" data-testid="filters-dry-run">Dry run sync</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning" OnClick="@(() => _confirmSync = true)" Disabled="@(_sync is not { DryRun: true, Created: > 0 } || _syncing)" data-testid="filters-apply">Create filters</MudButton>
+            @if (_sync is { } sync)
+            {
+                <MudText Typo="Typo.caption" data-testid="filters-summary">@SyncSummary(sync)</MudText>
+            }
+        </MudStack>
+        @if (_confirmSync && _sync is { } pending)
+        {
+            <div class="mt-3">
+                <ConfirmBar TestId="confirm-sync" ConfirmLabel="Create filters" Busy="_syncing" OnConfirm="@(() => SyncFiltersAsync(dryRun: false))" OnCancel="@(() => _confirmSync = false)">
+                    This creates @pending.Created Gmail filter(s)@(pending.LabelsCreated.Count > 0 ? $" and the label(s) {string.Join(", ", pending.LabelsCreated)}" : null).
+                    New mail they match skips the inbox from then on; remove a filter in Gmail's settings to stop it.
+                </ConfirmBar>
+            </div>
+        }
+    }
+</MudPaper>
+
+@code {
+    private sealed class RuleForm
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string Query { get; set; } = string.Empty;
+
+        public bool UnreadOnly { get; set; } = true;
+
+        public bool MarkRead { get; set; } = true;
+
+        public bool Archive { get; set; } = true;
+    }
+
+    private sealed class ConfigForm
+    {
+        public string? Label { get; set; }
+
+        public bool KeepStarred { get; set; } = true;
+
+        public bool KeepImportant { get; set; } = true;
+
+        public string Senders { get; set; } = string.Empty;
+
+        public List<RuleForm> Rules { get; } = [];
+
+        public static ConfigForm From(CleanupConfig? config)
+        {
+            var form = new ConfigForm();
+            if (config is null)
+            {
+                form.Rules.Add(new RuleForm());
+                return form;
+            }
+
+            form.Label = config.Label;
+            form.KeepStarred = config.Keep.Starred;
+            form.KeepImportant = config.Keep.Important;
+            form.Senders = string.Join("\n", config.Keep.Senders);
+            form.Rules.AddRange(config.Rules.Select(r => new RuleForm { Name = r.Name, Query = r.Query, UnreadOnly = r.UnreadOnly, MarkRead = r.MarkRead, Archive = r.Archive }));
+            return form;
+        }
+
+        public CleanupKeep Keep => new()
+        {
+            Starred = KeepStarred,
+            Important = KeepImportant,
+            Senders = [.. Senders.Split([',', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+        };
+
+        public CleanupConfig ToConfig() => new()
+        {
+            Label = string.IsNullOrWhiteSpace(Label) ? null : Label.Trim(),
+            Keep = Keep,
+            Rules = [.. Rules.Select(r => new CleanupRule { Name = r.Name.Trim(), Query = r.Query.Trim(), UnreadOnly = r.UnreadOnly, MarkRead = r.MarkRead, Archive = r.Archive })],
+        };
+
+        public string? Preview(RuleForm rule) => string.IsNullOrWhiteSpace(rule.Query)
+            ? null
+            : CleanupQuery.Build(new CleanupRule { Name = rule.Name, Query = rule.Query.Trim(), UnreadOnly = rule.UnreadOnly, MarkRead = rule.MarkRead, Archive = rule.Archive }, Keep);
+    }
+
+    /// <summary>How often a started run is re-read; tests shorten it.</summary>
+    [Parameter]
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+    private readonly CancellationTokenSource _disposed = new();
+    private IReadOnlyList<CleanupConfigEntry> _entries = [];
+    private IReadOnlyList<CleanupRun> _runs = [];
+    private string? _id;
+    private string? _newId;
+    private ConfigForm? _form;
+    private string _json = string.Empty;
+    private string? _loadError;
+    private int _tab;
+    private int _sample = 100;
+    private bool _confirmApply;
+    private long? _watching;
+    private CleanupRun? _shown;
+    private string? _message;
+    private string? _error;
+
+    private IReadOnlyList<FilterDefinitionView> _filters = [];
+    private string? _filterError;
+    private FilterSyncResult? _sync;
+    private bool _syncing;
+    private bool _confirmSync;
+
+    private FilterDefinitionsFile? Filters => Services.GetService<FilterDefinitionsFile>();
+
+    private CleanupConfigEntry? Saved => _id is null ? null : _entries.FirstOrDefault(e => e.Id == _id);
+
+    /// <summary>The newest completed dry run of the open file; applying waits for one.</summary>
+    private CleanupRun? LastDryRun => _runs.FirstOrDefault(r => r.ConfigId == _id && r.DryRun && r.Status == CleanupRunStatus.Completed);
+
+    [SupplyParameterFromQuery(Name = "file")]
+    public string? FileQuery { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        LoadFilters();
+        if (FileQuery is not null && _entries.Any(e => e.Id == FileQuery))
+        {
+            Open(FileQuery);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        _entries = Configs.List();
+        _runs = await Runs.ListAsync(10);
+    }
+
+    private void Open(string? id)
+    {
+        _confirmApply = false;
+        _error = null;
+        if (string.IsNullOrEmpty(id) || Configs.Get(id) is not { } entry)
+        {
+            (_id, _form, _json, _loadError) = (null, null, string.Empty, null);
+            return;
+        }
+
+        _id = id;
+        _form = ConfigForm.From(entry.Config);
+        _loadError = entry.Error;
+        _json = Configs.GetText(id) ?? entry.Config?.ToJson() ?? string.Empty;
+        _tab = entry.Error is null ? 0 : 1;
+    }
+
+    private void New()
+    {
+        var id = _newId?.Trim() ?? string.Empty;
+        if (!FileCleanupConfigStore.IsValidId(id))
+        {
+            _error = "A cleanup file name is letters, digits, - and _, starting with a letter or digit.";
+            return;
+        }
+
+        if (Configs.Get(id) is not null)
+        {
+            Open(id);
+            return;
+        }
+
+        (_id, _form, _loadError, _tab, _newId) = (id, ConfigForm.From(null), null, 0, null);
+        _json = string.Empty;
+    }
+
+    private Task SaveFormAsync()
+    {
+        var config = _form!.ToConfig();
+        if (config.Rules.Any(r => r.Name.Length == 0 || r.Query.Length == 0))
+        {
+            _error = "Every rule needs a name and a Gmail search.";
+            return Task.CompletedTask;
+        }
+
+        return SaveAsync(config.ToJson());
+    }
+
+    private Task SaveJsonAsync() => SaveAsync(_json);
+
+    private async Task SaveAsync(string json)
+    {
+        try
+        {
+            Configs.Save(_id!, json);
+        }
+        catch (CleanupConfigException ex)
+        {
+            _error = $"Not saved: {ex.Message}";
+            return;
+        }
+        catch (IOException ex)
+        {
+            _error = $"Not saved: {ex.Message}";
+            return;
+        }
+
+        _message = $"Saved {_id}.json. Dry-run it to see what it would change now.";
+        await ReloadAsync();
+        Open(_id);
+    }
+
+    private void ApplyJson()
+    {
+        try
+        {
+            _form = ConfigForm.From(CleanupConfig.Parse(_json));
+            _loadError = null;
+            _tab = 0;
+        }
+        catch (CleanupConfigException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task StartAsync(bool dryRun)
+    {
+        _confirmApply = false;
+        var run = await Launcher.StartAsync(_id!, dryRun, dryRun ? _sample : 0, CancellationToken.None);
+        _shown = run;
+        _message = dryRun ? $"Dry run of {_id} started." : $"Applying {_id}.";
+        await ReloadAsync();
+        _ = WatchAsync(run.Id);
+    }
+
+    /// <summary>Re-reads the run every second until it finishes or the page goes away.</summary>
+    private async Task WatchAsync(long id)
+    {
+        _watching = id;
+        try
+        {
+            while (!_disposed.IsCancellationRequested)
+            {
+                await Task.Delay(PollInterval, _disposed.Token);
+
+                // Its own scope: the page's run log may be busy with a click meanwhile.
+                await using var scope = Scopes.CreateAsyncScope();
+                var runs = scope.ServiceProvider.GetRequiredService<ICleanupRunLog>();
+                if (await runs.GetAsync(id, _disposed.Token) is { } run && run.Status is not (CleanupRunStatus.Queued or CleanupRunStatus.Running))
+                {
+                    _shown = run;
+                    _runs = await runs.ListAsync(10, _disposed.Token);
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            _watching = null;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void LoadFilters()
+    {
+        if (Filters is not { Exists: true } file)
+        {
+            return;
+        }
+
+        try
+        {
+            _filters = [.. file.Load().Select(f => new FilterDefinitionView(f.Label, f.Query, f.MarkRead, f.Summary))];
+        }
+        catch (FilterDefinitionsException ex)
+        {
+            _filterError = ex.Message;
+        }
+    }
+
+    private async Task SyncFiltersAsync(bool dryRun)
+    {
+        if (Services.GetService<BulkJobs>() is not { } jobs)
+        {
+            _filterError = "The filter sync isn't set up in this app.";
+            return;
+        }
+
+        _syncing = true;
+        _filterError = null;
+        try
+        {
+            var result = await jobs.SyncFiltersAsync(dryRun, CancellationToken.None);
+            if (result.BlockedReason is { } reason)
+            {
+                _filterError = reason;
+            }
+            else
+            {
+                _sync = result;
+            }
+
+            if (!dryRun && result.BlockedReason is null)
+            {
+                _message = $"Created {result.Created} filter(s); {result.Existing} already existed.";
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _filterError = $"The sync failed: {ex.Message}";
+        }
+        finally
+        {
+            _syncing = false;
+            _confirmSync = false;
+        }
+    }
+
+    private string SyncStatus(FilterDefinitionView filter)
+        => _sync?.Filters.FirstOrDefault(f => f.Label == filter.Label && f.Query == filter.Query && f.MarkRead == filter.MarkRead)?.Status switch
+        {
+            FilterSyncStatus.WouldCreate => "would create",
+            FilterSyncStatus.Created => "created",
+            FilterSyncStatus.Exists => "exists",
+            _ => "–",
+        };
+
+    private static string SyncSummary(FilterSyncResult sync) => sync.DryRun
+        ? $"Would create {sync.Created} filter(s); {sync.Existing} already exist."
+        : $"Created {sync.Created} filter(s); {sync.Existing} already existed.";
+
+    private static string Status(CleanupRunStatus status) => status switch
+    {
+        CleanupRunStatus.Queued => "queued",
+        CleanupRunStatus.Running => "running",
+        CleanupRunStatus.Completed => "done",
+        CleanupRunStatus.Blocked => "blocked",
+        _ => "failed",
+    };
+
+    private static string Time(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    // Only cancelled: a watch that is still unwinding may read the token.
+    public void Dispose() => _disposed.Cancel();
+}
