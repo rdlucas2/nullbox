@@ -50,15 +50,19 @@ Single ASP.NET Core app (one container) — keeps ops simple:
 - **Jev layer**: `IJevClient` (HTTP, typed, retry/backoff, cost guard, response cache keyed by message+schema hash).
 - **Rules**: JSON documents stored in the DB, versioned, validated against a JSON Schema; each rule set = state template + questions (choices, scores, nouls)
   + decision table mapping Jev outputs → actions (label X, mark read, archive, trash, star, none) with thresholds.
-- **UI**: Blazor (server) inside the same app, or React SPA if preferred — decision in issue M3-14 (default: Blazor, to keep one language/container).
+- **UI**: Blazor (server) inside the same app, or React SPA if preferred — **Blazor (interactive server)** — decided.
 - **Audit log**: every message decision (inputs hash, Jev output, action taken, dry-run flag) so rules can be tested/replayed.
+- **Hosting**: docker compose on the home Ubuntu server (alongside Home Assistant/Jellyfin), LAN-only, remote access via VPN; see M4-19.
 - **Container**: multi-stage Dockerfile on `mcr.microsoft.com/dotnet/aspnet` (latest), non-root, healthcheck, volume `/data`,
   docker-compose with secrets for Google client + Jev API key.
 
 ### Auth note (fixes emailBlaster's open TODO)
-Browser login can't happen in a container. Use a **web OAuth client**: the UI has a "Connect Gmail" button, redirect URI
-on the app itself, refresh token stored encrypted (Data Protection) on the `/data` volume. Scope: `gmail.modify`
-(+ `gmail.settings.basic` only if filter sync is enabled; `mail.google.com` only if permanent delete is enabled).
+Reuse emailBlaster's existing **desktop OAuth client**: mount `credentials.json` + `token.json` into `/data/google/`.
+A refresh token needs no browser, so the container just refreshes it (and writes it back). Initial consent still happens on a
+machine with a browser (Google removed the OOB flow; device flow disallows Gmail scopes) — either emailBlaster's existing
+tokens or a small `nullbox-auth` loopback helper. No web OAuth flow / HTTPS redirect needed. Caveat: consent screens in
+"Testing" expire refresh tokens after 7 days. Existing token scope is `mail.google.com`; filter sync uses a separate
+`token_filters.json` (`gmail.settings.basic`), as in emailBlaster.
 
 ### Safety defaults
 - Dry-run is the default mode for every new rule; promotion to live is an explicit UI action.
