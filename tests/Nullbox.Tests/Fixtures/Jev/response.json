@@ -1,0 +1,38 @@
+{
+  "model": "jev-1.14.0",
+  "answers": {
+    "category": {
+      "type": "choice",
+      "choice": "promo",
+      "confidence": 0.7,
+      "probabilities": {
+        "receipt": 0.1,
+        "promo": 0.8,
+        "personal": 0.1
+      }
+    },
+    "urgency": {
+      "type": "score",
+      "score": 1.7,
+      "confidence": 0.55,
+      "legend": {
+        "0": "Can wait",
+        "1": "...",
+        "2": "..."
+      },
+      "probabilities": {
+        "0": 0.1,
+        "1": 0.1,
+        "2": 0.8
+      }
+    },
+    "is_phishing": {
+      "type": "noul",
+      "noul": 0.02
+    }
+  },
+  "usage": {
+    "input_tokens": 120,
+    "output_tokens": 12
+  }
+}
