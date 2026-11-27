@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nullbox.Core.Cleanup;
 using Nullbox.Core.Pipeline;
 using Nullbox.Core.Rules;
+using Nullbox.Data.Cleanup;
 using Nullbox.Data.Pipeline;
 using Nullbox.Data.Rules;
 
@@ -13,7 +15,7 @@ public static class DataServiceCollectionExtensions
     public const string DatabaseFileName = "nullbox.db";
 
     /// <summary>
-    /// Registers <see cref="NullboxDbContext"/> on <c>{dataDirectory}/nullbox.db</c>, the rule-set store, the decision log, and the
+    /// Registers <see cref="NullboxDbContext"/> on <c>{dataDirectory}/nullbox.db</c>, the rule-set store, the decision log, the cleanup run log, and the
     /// start-up migration and seeding.
     /// </summary>
     public static IServiceCollection AddNullboxData(this IServiceCollection services, string dataDirectory)
@@ -26,6 +28,7 @@ public static class DataServiceCollectionExtensions
         services.AddScoped<EfDecisionLog>();
         services.AddScoped<IDecisionLog>(sp => sp.GetRequiredService<EfDecisionLog>());
         services.AddScoped<IPipelineSettingsStore>(sp => sp.GetRequiredService<EfDecisionLog>());
+        services.AddScoped<ICleanupRunLog, EfCleanupRunLog>();
         services.AddHostedService<DatabaseInitializer>();
         return services;
     }

@@ -28,10 +28,13 @@ public sealed class FakeInboxGmail : IGmailService
         return Task.FromResult((History ?? throw new InvalidOperationException("no history scripted"))(startHistoryId));
     }
 
+    /// <summary>Per-query search results; when unset every search returns <see cref="InboxSearchResults"/>.</summary>
+    public Func<string, IReadOnlyList<string>>? Search { get; set; }
+
     public Task<IReadOnlyList<string>> SearchAsync(string query, int? maxResults = null, CancellationToken cancellationToken = default)
     {
         Calls.Add($"search:{query}");
-        return Task.FromResult<IReadOnlyList<string>>([.. InboxSearchResults]);
+        return Task.FromResult(Search?.Invoke(query) ?? [.. InboxSearchResults]);
     }
 
     /// <summary>Messages <see cref="GetMessageAsync"/> returns; unknown ids throw <see cref="KeyNotFoundException"/>.</summary>
