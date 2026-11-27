@@ -7,4 +7,17 @@
   <ItemGroup>
     <ProjectReference Include="..\Nullbox.Core\Nullbox.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.15" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.15" />
+    <PackageReference Include="Polly.Core" Version="8.9.1" />
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nullbox.Tests" />
+  </ItemGroup>
+
 </Project>
