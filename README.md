@@ -45,7 +45,8 @@ token budget. Rule sets (`/rules`) lists, edits, versions, imports and exports r
 ([docs/rules.md](docs/rules.md#editing-in-the-ui)). Test (`/test`, and the Test tab in the editor) runs a rule set over
 real messages in dry run and shows each verdict ([docs/rules.md](docs/rules.md#testing-a-rule-set)).
 
-- **Audit** (`/audit`): every decision, filterable by rule set, outcome, action, message and confidence, with
+- **Audit** (`/audit`): every decision, filterable by rule set (`/audit?ruleSet=<name>` opens it filtered), outcome,
+  action, message and confidence, with
   details (what was held back and why, Jev's answers, what Jev saw). An applied decision can be **undone** after a
   confirmation: the labels and star it added come off, read or archived mail goes back to unread and the inbox, and
   deleted mail comes back out of Trash. Labels the message already had stay. The undo is logged as an `undone` record.

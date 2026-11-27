@@ -145,7 +145,15 @@ else
     private string? _message;
     private bool _messageIsError;
 
-    protected override Task OnInitializedAsync() => SearchAsync();
+    /// <summary>Pre-fills the rule-set filter, so other pages can link to one rule set's (or saved rule's) decisions.</summary>
+    [SupplyParameterFromQuery(Name = "ruleSet")]
+    public string? RuleSetQuery { get; set; }
+
+    protected override Task OnInitializedAsync()
+    {
+        _ruleSet = string.IsNullOrWhiteSpace(RuleSetQuery) ? null : RuleSetQuery.Trim();
+        return SearchAsync();
+    }
 
     private DecisionQuery Query(long? before) => new()
     {

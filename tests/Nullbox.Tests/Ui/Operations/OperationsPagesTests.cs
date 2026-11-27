@@ -1,5 +1,6 @@
 using Bunit;
 using Hangfire;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -101,6 +102,20 @@ public sealed class OperationsPagesTests : IAsyncLifetime
         var row = Assert.Single(cut.FindAll("[data-testid^=decision-]"));
         Assert.Contains("m2", row.TextContent, StringComparison.Ordinal);
         Assert.Empty(cut.FindAll("[data-testid=undo]")); // a dry run has nothing to undo
+    }
+
+    [Fact]
+    public async Task Audit_takes_the_rule_set_filter_from_the_query_string()
+    {
+        await AuditSamples.StoreAsync(_db, AuditSamples.Applied("m1", ["archive"], [GmailLabels.Inbox], _db.Time.GetUtcNow()));
+        await AuditSamples.StoreAsync(_db, AuditSamples.Applied("m2", ["archive"], [GmailLabels.Inbox], _db.Time.GetUtcNow()) with { RuleSetKey = "newsletters@v2" });
+
+        _ctx.Services.GetRequiredService<NavigationManager>().NavigateTo("/audit?ruleSet=newsletters");
+        var cut = _ctx.Render<Audit>();
+
+        var row = Assert.Single(cut.FindAll("[data-testid^=decision-]"));
+        Assert.Contains("m2", row.TextContent, StringComparison.Ordinal);
+        Assert.Equal("newsletters", cut.Find("[data-testid=filter-rule-set]").GetAttribute("value"));
     }
 
     [Fact]
