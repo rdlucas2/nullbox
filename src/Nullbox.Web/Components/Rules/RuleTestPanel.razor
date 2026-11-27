@@ -1,0 +1,278 @@
+@using Nullbox.Core.Rules
+@using Nullbox.Web.Pipeline
+@inject IServiceProvider Services
+
+<MudStack Spacing="3">
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        Runs this rule set over real messages in dry run: Jev answers and the decisions are worked out, but nothing in Gmail
+        changes and nothing is recorded. Check the cost first; the run uses the rule set as it was then.
+    </MudText>
+
+    @if (Draft is null)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" data-testid="test-unavailable">@(Unavailable ?? "Fix the rule set's errors to test it.")</MudAlert>
+    }
+    else if (_tester is null)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" data-testid="test-unavailable">The tester isn't set up in this app.</MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" AlignItems="AlignItems.End" Wrap="Wrap.Wrap" Spacing="3">
+            <label class="mud-typography-body2">
+                Messages
+                <select class="d-block" value="@_source" @onchange="@(e => Reset(() => _source = Enum.Parse<TestSource>((string)e.Value!)))" data-testid="test-source">
+                    <option value="@TestSource.Inbox">Newest in the inbox</option>
+                    <option value="@TestSource.Search">Gmail search</option>
+                    <option value="@TestSource.Audit">From the decision log</option>
+                </select>
+            </label>
+            @if (_source == TestSource.Search)
+            {
+                <label class="mud-typography-body2">
+                    Search
+                    <input class="d-block" value="@_query" @onchange="@(e => Reset(() => _query = (string?)e.Value))" placeholder="from:shop newer_than:7d" data-testid="test-query" />
+                </label>
+            }
+            else if (_source == TestSource.Audit)
+            {
+                <label class="mud-typography-body2">
+                    Rule set
+                    <input class="d-block" value="@_auditRuleSet" @onchange="@(e => Reset(() => _auditRuleSet = (string?)e.Value))" placeholder="@Draft.Name" data-testid="test-audit-rule-set" />
+                </label>
+            }
+            <label class="mud-typography-body2">
+                How many (at most @_tester.MaxMessages)
+                <input class="d-block" type="number" min="1" max="@_tester.MaxMessages" value="@_count" @onchange="SetCount" style="width: 6rem" data-testid="test-count" />
+            </label>
+            <label class="mud-typography-body2">
+                <input type="checkbox" checked="@_compare" @onchange="@(e => Reset(() => _compare = e.Value is true))" data-testid="test-compare" />
+                Compare with the active version
+            </label>
+            <MudButton Variant="Variant.Outlined" OnClick="PrepareAsync" Disabled="@_busy" data-testid="test-prepare">Check cost</MudButton>
+        </MudStack>
+
+        @if (_plan is { } plan)
+        {
+            <MudAlert Severity="@(plan.Blocked is null ? Severity.Info : Severity.Warning)" Dense="true" data-testid="test-plan">
+                @if (plan.Messages.Count > 0)
+                {
+                    <span>
+                        @plan.Messages.Count message(s), at most @plan.JevCalls Jev call(s) and about @plan.EstimatedInputTokens.ToString("N0") input tokens
+                        (cached answers cost nothing).
+                        @if (plan.Budget is { } budget)
+                        {
+                            <span> Today: @budget.InputTokensToday.ToString("N0") of @budget.MaxInputTokensPerDay.ToString("N0") tokens, @budget.RequestsLastHour of @budget.MaxRequestsPerHour calls this hour.</span>
+                        }
+                        @if (plan.Active is { } active)
+                        {
+                            <span> Compared with v@(active.Version)@(plan.Recorded.Count > 0 ? $"; {plan.Recorded.Count} already decided by it" : string.Empty).</span>
+                        }
+                        else if (_compare)
+                        {
+                            <span> No active version to compare with.</span>
+                        }
+                    </span>
+                }
+                @if (plan.Blocked is not null)
+                {
+                    <div data-testid="test-blocked">@plan.Blocked</div>
+                }
+            </MudAlert>
+            @if (plan.Blocked is null)
+            {
+                <div>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="@_busy" data-testid="test-run">Run in dry run</MudButton>
+                </div>
+            }
+        }
+
+        @if (_busy)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" data-testid="test-error">@_error</MudAlert>
+        }
+
+        @if (_run is { } run)
+        {
+            <MudText Typo="Typo.subtitle1" data-testid="test-summary">
+                @run.Rows.Count message(s) tested, @run.JevCalls Jev call(s), @run.InputTokens.ToString("N0") input tokens.
+                @if (run.Plan.Active is not null)
+                {
+                    <span> @run.Changed differ from v@(run.Plan.Active.Version).</span>
+                }
+            </MudText>
+            @if (run.Stopped is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" data-testid="test-stopped">@run.Stopped</MudAlert>
+            }
+            <MudSimpleTable Dense="true" Outlined="true" data-testid="test-results">
+                <thead>
+                    <tr>
+                        <th>Message</th>
+                        <th>Jev's answers</th>
+                        <th>Matched decisions</th>
+                        <th>Actions</th>
+                        @if (run.Plan.Active is not null)
+                        {
+                            <th>Active version</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in run.Rows)
+                    {
+                        <tr data-testid="@($"test-row-{row.MessageId}")" data-changed="@(row.Changed ? "true" : "false")" style="@(row.Changed ? "background: rgba(255, 193, 7, 0.15)" : null)">
+                            <td>
+                                <div>@(row.Subject ?? "(no subject)")</div>
+                                <div class="mud-typography-caption">@row.From</div>
+                                <details>
+                                    <summary class="mud-typography-caption">State sent to Jev</summary>
+                                    <pre class="mud-typography-caption" style="white-space: pre-wrap; max-width: 28rem;">@row.State</pre>
+                                </details>
+                            </td>
+                            @if (row.Error is not null)
+                            {
+                                <td colspan="@(run.Plan.Active is null ? 3 : 4)" data-testid="test-row-error">@row.Error</td>
+                            }
+                            else
+                            {
+                                <td data-testid="test-answers">
+                                    @foreach (var answer in row.Answers)
+                                    {
+                                        <div title="@answer.Detail"><code>@answer.Question</code>: @answer.Value</div>
+                                    }
+                                    @if (row.FromCache)
+                                    {
+                                        <span class="mud-typography-caption">(cached)</span>
+                                    }
+                                </td>
+                                <td data-testid="test-decisions">@(row.Decisions.Count == 0 ? "none" : string.Join(", ", row.Decisions))</td>
+                                <td data-testid="test-actions">
+                                    @(row.Actions.Count == 0 ? "none" : string.Join(", ", row.Actions))
+                                    @foreach (var skipped in row.Skipped)
+                                    {
+                                        <div class="mud-typography-caption">skipped: @skipped</div>
+                                    }
+                                </td>
+                                @if (run.Plan.Active is not null)
+                                {
+                                    <td data-testid="test-active">
+                                        @if (row.Active is { } active)
+                                        {
+                                            <div>@(active.Decisions.Count == 0 ? "none" : string.Join(", ", active.Decisions))</div>
+                                            <div>@(active.Actions.Count == 0 ? "no actions" : string.Join(", ", active.Actions))</div>
+                                            <div class="mud-typography-caption">@row.ActiveSource@(row.Changed ? ", differs" : string.Empty)</div>
+                                        }
+                                    </td>
+                                }
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    }
+</MudStack>
+
+@code {
+    /// <summary>The rule set to test, or null while it has errors.</summary>
+    [Parameter]
+    public RuleSetDocument? Draft { get; set; }
+
+    /// <summary>Shown instead of the controls while <see cref="Draft"/> is null.</summary>
+    [Parameter]
+    public string? Unavailable { get; set; }
+
+    private RuleTester? _tester;
+    private TestSource _source = TestSource.Inbox;
+    private string? _query;
+    private string? _auditRuleSet;
+    private int _count = 10;
+    private bool _compare = true;
+    private bool _busy;
+    private string? _error;
+    private TestPlan? _plan;
+    private TestRun? _run;
+
+    protected override void OnInitialized()
+    {
+        _tester = Services.GetService<RuleTester>();
+        if (_tester is not null)
+        {
+            _count = Math.Min(_count, _tester.MaxMessages);
+        }
+    }
+
+    private void Reset(Action change)
+    {
+        change();
+        _plan = null;
+    }
+
+    private void SetCount(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var count))
+        {
+            Reset(() => _count = Math.Clamp(count, 1, _tester?.MaxMessages ?? 1));
+        }
+    }
+
+    private async Task PrepareAsync()
+    {
+        if (_tester is null || Draft is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _run = null;
+        try
+        {
+            _plan = await _tester.PrepareAsync(Draft, new TestSelection
+            {
+                Source = _source,
+                Query = _query,
+                AuditRuleSet = _auditRuleSet,
+                Count = _count,
+                CompareWithActive = _compare,
+            });
+        }
+        catch (Exception ex)
+        {
+            _error = $"Couldn't prepare the test: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (_tester is null || _plan is not { Blocked: null } plan)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            _run = await _tester.RunAsync(plan);
+        }
+        catch (Exception ex)
+        {
+            _error = $"The test failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

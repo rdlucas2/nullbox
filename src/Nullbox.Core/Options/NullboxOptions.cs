@@ -18,6 +18,8 @@ public sealed class NullboxOptions
     public PipelineSettings Pipeline { get; set; } = new();
 
     public AuditSettings Audit { get; set; } = new();
+
+    public TesterSettings Tester { get; set; } = new();
 }
 
 public enum HangfireStorageKind
@@ -92,4 +94,11 @@ public sealed class AuditSettings
     /// never kept; the inputs hash still covers the whole state.
     /// </summary>
     public int StoredBodyChars { get; set; } = 280;
+}
+
+/// <summary>Limits for the rule tester, which runs a draft rule set over a batch of messages in dry run.</summary>
+public sealed class TesterSettings
+{
+    /// <summary>Most messages one test run may take (Jev calls per run are at most twice this).</summary>
+    public int MaxMessages { get; set; } = 25;
 }

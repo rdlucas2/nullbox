@@ -114,6 +114,9 @@
             </MudItem>
         </MudGrid>
     </MudTabPanel>
+    <MudTabPanel Text="Test">
+        <RuleTestPanel Draft="@(_model.Validate().Count == 0 ? _model.ToDocument() : null)" />
+    </MudTabPanel>
     <MudTabPanel Text="@($"Versions ({_versions.Count})")">
         <VersionHistory Versions="_versions" OnRestore="Restore" />
     </MudTabPanel>
