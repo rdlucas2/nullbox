@@ -26,14 +26,15 @@ RUN mkdir -p /data/google \
  && chmod 0700 /data/google
 
 WORKDIR /app
-COPY --from=build --chown=$APP_UID:$APP_UID /app/publish ./
+COPY --from=build /app/publish ./
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/nullbox-entrypoint
 
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     NULLBOX_DATA_DIR=/data \
     DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-# Non-root: the built-in "app" user of the official .NET images.
-USER $APP_UID
+# The entrypoint starts as root only to fix /data ownership, then drops to NULLBOX_UID (default: the
+# built-in "app" user, 1654) before the app starts. See docker/entrypoint.sh.
 EXPOSE 8080
 VOLUME ["/data"]
 
@@ -41,4 +42,5 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["dotnet", "Nullbox.Web.dll", "--healthcheck"]
 
-ENTRYPOINT ["dotnet", "Nullbox.Web.dll"]
+ENTRYPOINT ["nullbox-entrypoint"]
+CMD ["dotnet", "Nullbox.Web.dll"]

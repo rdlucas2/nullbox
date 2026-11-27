@@ -53,18 +53,21 @@ where the `heartbeat` recurring job shows up and can be triggered by hand. Jobs 
 ## Run in Docker
 
 nullbox is meant to run entirely in a container. The image is a multi-stage build (`sdk:10.0` → `aspnet:10.0`),
-runs as the non-root `app` user (UID 1654), listens on 8080 inside the container, and has a `HEALTHCHECK`
+runs the app as a non-root user, listens on 8080 inside the container, and has a `HEALTHCHECK`
 that calls `/healthz`. All state (SQLite database, Google token files) lives in the `/data` volume.
 
 ```sh
 cp .env.example .env              # fill in ADMIN_PASSWORD, JEV_API_KEY, ...
-mkdir -p data/google
-sudo chown -R 1654:1654 data      # the container user must own the bind-mounted ./data
 docker compose up -d --build
 curl http://localhost:8480/healthz   # -> Healthy
 docker compose ps                    # STATUS shows (healthy)
 ```
 
+- No `chown` needed: on start the container creates `./data` if missing, gives anything in it that the app user
+  doesn't own to that user, then drops root before the app runs ([docker/entrypoint.sh](docker/entrypoint.sh)).
+  The app user is 1654 by default; set `NULLBOX_UID`/`NULLBOX_GID` in `.env` to your `id -u`/`id -g` to keep
+  `./data` editable without sudo. If you start it with `--user` or compose `user:`, you own the permissions, and
+  the start-up error names the folder and the fix.
 - Host port defaults to **8480**; set `NULLBOX_PORT` in `.env` to change it, and `NULLBOX_BIND` to a LAN IP to
   publish on one interface only.
 - Put emailBlaster's `credentials.json` and `token.json` in `./data/google/`, or upload the token at
