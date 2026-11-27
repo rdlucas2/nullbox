@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <RootNamespace>Nullbox.Web</RootNamespace>
+    <!-- The SDK only adds blazor.web.js when it sees .razor files at restore time; the Docker build restores from
+         the csproj alone, so say it explicitly. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +20,7 @@
     <PackageReference Include="Hangfire.InMemory" Version="1.0.0" />
     <PackageReference Include="Hangfire.Storage.SQLite" Version="0.4.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.15" />
+    <PackageReference Include="MudBlazor" Version="9.14.0" />
     <!-- Transitive pins: patched versions of packages Hangfire pulls in with known advisories. -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.14" />

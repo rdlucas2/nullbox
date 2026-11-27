@@ -12,11 +12,12 @@ and the GitHub issues for the work breakdown. Gmail actions are a port of [email
 
 | Path | What lives there |
 |---|---|
-| `src/Nullbox.Web` | ASP.NET Core host: endpoints, Hangfire, UI (later milestones) |
+| `src/Nullbox.Web` | ASP.NET Core host: endpoints, Hangfire, Blazor + MudBlazor UI (`Components/`) |
 | `src/Nullbox.Core` | Domain model, rule model, interfaces (`IGmailService`, `IJevClient`, ...) |
 | `src/Nullbox.Data` | EF Core + SQLite (`{data}/nullbox.db`): rule-set versions, migrations applied on start |
 | `src/Nullbox.Gmail` | Gmail API implementation |
 | `src/Nullbox.Jev` | TypeSafe Jev HTTP client |
+| `deploy/` | Server compose file, `backup.sh`/`restore.sh` and their test ([docs/deploy.md](docs/deploy.md)) |
 | `tools/Nullbox.Auth` | `nullbox-auth`: one-time Google consent on a PC, writes `token.json` ([docs/gmail-auth.md](docs/gmail-auth.md)) |
 | `tests/Nullbox.Tests` | xUnit tests (unit + in-process integration via `WebApplicationFactory`) |
 
@@ -30,7 +31,18 @@ dotnet test Nullbox.sln
 dotnet run --project src/Nullbox.Web
 ```
 
-The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /` (app name and version).
+The app exposes `GET /healthz` (returns `Healthy`, no login needed) and `GET /api/info` (app name and version).
+
+## Web UI
+
+Sign in at `/login` with `ADMIN_PASSWORD`; every UI page redirects there until you do. The shell is Blazor
+(interactive server) with MudBlazor: a side nav for Dashboard, Rule sets, Test, Audit, Jobs and Settings, a
+light/dark toggle (follows the system setting until you switch it) and a sign-out button.
+
+The dashboard at `/` shows the Gmail token state (scopes, access-token expiry, and a link to `/settings/gmail`
+when it needs reauthorizing), the last inbox poll and scheduler heartbeat, Hangfire queue depth, and today's Jev
+token budget. Rule sets, Test, Audit and Jobs are placeholders that later milestones fill in; Jobs links to the
+Hangfire dashboard meanwhile.
 
 ## Configuration
 
@@ -44,6 +56,7 @@ The container's plain env vars `ADMIN_PASSWORD` and `NULLBOX_DATA_DIR` apply whe
 | `Nullbox:Hangfire:Storage` | `SQLite` | `SQLite` (file `hangfire.db` in the data directory) or `InMemory` (tests). |
 | `Nullbox:Hangfire:WorkerCount` | `2` | Hangfire worker threads. |
 | `Nullbox:Hangfire:DashboardPath` | `/hangfire` | Dashboard URL, behind the admin login. |
+| `Nullbox:ForwardedHeaders:Enabled` / `KnownProxies` | off / none | Trust `X-Forwarded-*` from these proxy IPs, only if a proxy is added later ([docs/deploy.md](docs/deploy.md)). |
 | `Nullbox:Jobs:HeartbeatCron` | `*/5 * * * *` | No-op heartbeat job (UTC) that proves the scheduler runs. |
 | `Nullbox:Jobs:InboxPollCron` | `*/5 * * * *` | How often the `inbox-poll` job checks Gmail for new inbox mail (UTC). |
 | `Nullbox:Jobs:InboxResyncWindow` | `2d` | Gmail `newer_than:` window listed on first run and when history has expired. |
@@ -111,6 +124,8 @@ docker compose ps                    # STATUS shows (healthy)
 - Put emailBlaster's `credentials.json` and `token.json` in `./data/google/`, or upload the token at
   `/settings/gmail` after signing in. See [docs/gmail-auth.md](docs/gmail-auth.md). `./data` and `.env`
   are gitignored and excluded from the build context.
+- On the home server, use `deploy/docker-compose.yml`. It publishes on the LAN IP only, keeps nightly backups and
+  caps memory at 512 MB. See [docs/deploy.md](docs/deploy.md) for the checklist, backup/restore, updates and remote access.
 - Without Compose: `docker build -t nullbox:local .` then
   `docker run -d -p 8480:8080 -v "$PWD/data:/data" --env-file .env nullbox:local`.
 

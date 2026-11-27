@@ -1,0 +1,8 @@
+<MudNavMenu>
+    @foreach (var item in NavItems.All)
+    {
+        <MudNavLink Href="@item.Href" Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)" Icon="@item.Icon">@item.Title</MudNavLink>
+    }
+    <MudDivider Class="my-2" />
+    <MudNavLink Href="/hangfire" Target="_blank" Icon="@Icons.Material.Filled.OpenInNew">Hangfire dashboard</MudNavLink>
+</MudNavMenu>

@@ -31,4 +31,11 @@ mkdir -p "$data/google"
 find "$data" \( \! -user "$uid" -o \! -group "$gid" \) -exec chown "$uid:$gid" {} +
 chmod 0700 "$data/google"
 
+# The backup folder (deploy/docker-compose.yml mounts ./backups there), when mounted: same treatment.
+backups="${NULLBOX_BACKUP_DIR:-}"
+if [ -n "$backups" ] && [ -d "$backups" ]; then
+  find "$backups" \( \! -user "$uid" -o \! -group "$gid" \) -exec chown "$uid:$gid" {} +
+  chmod 0700 "$backups"
+fi
+
 exec setpriv --reuid="$uid" --regid="$gid" --clear-groups --no-new-privs -- "$@"

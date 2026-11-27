@@ -4,6 +4,7 @@ obj/
 *.user
 .env
 data/
+backups/
 
 # Secrets: never commit (credentials live in ./data/google/, which is ignored above)
 credentials.json

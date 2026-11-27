@@ -24,7 +24,7 @@ public sealed class HealthEndpointTests(NullboxAppFactory factory)
     {
         using var client = factory.CreateClient();
 
-        var info = await client.GetFromJsonAsync<AppIdentity>("/");
+        var info = await client.GetFromJsonAsync<AppIdentity>("/api/info");
 
         Assert.NotNull(info);
         Assert.Equal(AppInfo.Name, info.Name);
