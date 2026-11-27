@@ -3,6 +3,7 @@ using Nullbox.Jev;
 using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Hosting;
+using Nullbox.Web.Inbox;
 using Nullbox.Web.Settings;
 using Nullbox.Web.Ui;
 
@@ -22,6 +23,7 @@ builder.Services.AddHealthChecks();
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
 builder.Services.AddNullboxGmail(builder.Configuration);
+builder.Services.AddNullboxInbox();
 builder.Services.AddNullboxJev(builder.Configuration, NullboxHosting.ResolveDataDirectory(builder.Configuration));
 builder.Services.AddNullboxUi();
 
@@ -36,6 +38,7 @@ app.MapGet("/api/info", () => Results.Ok(new { name = AppInfo.Name, version = Ap
 app.MapAdminAuthEndpoints();
 app.MapNullboxDashboard();
 app.MapGmailSettings();
+app.MapInboxEndpoints();
 app.MapNullboxUi();
 
 app.WarnIfAdminPasswordMissing();
