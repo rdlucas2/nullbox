@@ -91,6 +91,12 @@ public sealed class FakeInboxGmail : IGmailService
         return Task.CompletedTask;
     }
 
+    public Task UntrashAsync(IEnumerable<string> messageIds, CancellationToken cancellationToken = default)
+    {
+        Changes.Enqueue($"untrash:{string.Join(",", messageIds)}");
+        return Task.CompletedTask;
+    }
+
     /// <summary>Off by default, so anything that tries to delete permanently fails loudly.</summary>
     public bool AllowPermanentDelete { get; set; }
 
