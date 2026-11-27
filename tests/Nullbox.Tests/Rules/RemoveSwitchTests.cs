@@ -37,6 +37,7 @@ public sealed class RemoveSwitchTests
     // ---- the remove switch ---------------------------------------------------------------------
 
     [Theory]
+    [InlineData("dry_run", RemoveMode.DryRun)]
     [InlineData("archive", RemoveMode.Archive)]
     [InlineData("delete", RemoveMode.Delete)]
     public void Remove_round_trips(string text, RemoveMode expected)
@@ -91,6 +92,22 @@ public sealed class RemoveSwitchTests
         var error = Assert.Single(RuleSetValidator.Validate(Minimal(new DecisionRule { When = "spam.noul >= 0.9" })));
         Assert.Equal("/decisions/0/actions", error.Path);
         Assert.Contains("remove", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_dry_run_screen_rule_with_none_is_valid()
+        => Assert.Empty(RuleSetValidator.Validate(Minimal(new DecisionRule { Name = "Screen", When = "spam.noul < 0.1", Actions = ["none"], Remove = RemoveMode.DryRun })));
+
+    [Fact]
+    public void Dry_run_rules_get_no_review_label_so_they_may_share_a_name()
+    {
+        Assert.Empty(RuleSetValidator.Validate(Minimal(
+            new DecisionRule { Name = "Junk", When = "spam.noul >= 0.9", Remove = RemoveMode.DryRun },
+            new DecisionRule { Name = "junk!", When = "spam.noul >= 0.8", Remove = RemoveMode.DryRun })));
+
+        Assert.Single(RuleSetValidator.Validate(Minimal(
+            new DecisionRule { Name = "Junk", When = "spam.noul >= 0.9", Remove = RemoveMode.Archive },
+            new DecisionRule { Name = "junk!", When = "spam.noul >= 0.8", Remove = RemoveMode.Archive })));
     }
 
     [Fact]

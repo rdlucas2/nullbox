@@ -60,18 +60,22 @@ Patterns from the Jev docs work as ordinary conditions:
 `label:<name>` (created if needed), `mark_read`, `star`, and `none` (match and stop without changing anything; can't be
 combined with other actions or with `remove`).
 
-## Archive first: the `remove` switch
+## Dry run, then archive, then delete: the `remove` switch
 
-Taking mail out of the inbox is not an action; it is each rule's **Archive | Delete** switch, so a rule can only
-delete when you have flipped it on purpose.
+Taking mail out of the inbox is not an action; it is each rule's **Dry run | Archive | Delete** switch, so a rule can
+only delete when you have promoted it on purpose.
 
 | `remove` | What happens to matching mail |
 |---|---|
+| `dry_run` | Nothing changes, even in a live rule set. The match is recorded, and the rule's actions show as held back in the audit log. New rules in the editor start here. |
 | omitted | Stays in the inbox (labels, mark read and star still apply). |
-| `archive` | Leaves the inbox and gets the review label `nullbox/review/<rule-set>/<rule>`. New rules in the editor start here. |
+| `archive` | Leaves the inbox and gets the review label `nullbox/review/<rule-set>/<rule>`. |
 | `delete` | Moves to Trash (Gmail keeps it 30 days). Rules never delete permanently. |
 
-Try a rule on `archive`, look through its review label in Gmail, and flip it to `delete` once you trust it.
+Start a rule on `dry_run` and watch what it matches in the audit log. Promote it to `archive` and look through its
+review label in Gmail, then to `delete` once you trust it. A dry-run rule is recorded but never takes the first
+match, so with `match: first` the rules below it still act as before: adding a rule on trial changes nothing. The audit
+log shows the dry-run match next to the rule that did act, which is what the new rule will take over once promoted.
 
 The review label is named after the rule (lowercase, `-` between words, accents dropped), or `rule-<n>` for an unnamed
 rule, so name your rules to keep the label when you reorder them. Two rules that remove mail can't share a label.
@@ -114,7 +118,8 @@ The editor at `/rules/<name>` (or `/rules/new`) has a tab for each part of the d
   Instructions and criteria are plain text, or JSON when they start with `{` or `[`.
 - **Decisions**: the match mode, then each decision's `when`, actions and `remove` switch. A `when` made of
   comparisons joined by `&&` shows each comparison, with a slider for confidence, probability and noul thresholds; a
-  clause builder appends new comparisons. Switching a decision to Delete asks first, says matching mail goes to Trash
+  clause builder appends new comparisons. The switch offers Dry run (the default for a new rule), Keep in inbox,
+Archive and Delete. Switching a decision to Delete asks first, says matching mail goes to Trash
   (purged by Gmail after 30 days) and links its review label in Gmail; it also says when the delete lock means it
   will still archive. Delete rules without a confidence threshold, or with one below 0.8, get a warning.
 - **JSON**: the document as it would be saved, editable. Applying edited JSON updates the other tabs; JSON that
@@ -126,7 +131,8 @@ The editor at `/rules/<name>` (or `/rules/new`) has a tab for each part of the d
 Validation errors (schema and references, with their JSON paths) are listed under the tabs and block saving. Saving
 adds a version but doesn't activate it; **Activate** and **Switch to live / dry run** ask for confirmation and are
 disabled while there are unsaved changes. Switching modes saves the active version with the new mode and activates
-that. Leaving the page with unsaved changes asks first. New rule sets made in the editor start as dry runs.
+that. Leaving the page with unsaved changes asks first. New rule sets made in the editor are live, and each new rule in
+them starts on Dry run.
 
 ## Testing a rule set
 
