@@ -39,6 +39,15 @@ public sealed class NullboxOptionsTests
     }
 
     [Fact]
+    public void ResolveDataDirectory_applies_the_same_precedence_as_options()
+    {
+        Assert.Equal(Path.GetFullPath("/data"), NullboxHosting.ResolveDataDirectory(Config(("NULLBOX_DATA_DIR", "/data"))));
+        Assert.Equal(
+            Path.GetFullPath("/custom"),
+            NullboxHosting.ResolveDataDirectory(Config(("Nullbox:DataDirectory", "/custom"), ("NULLBOX_DATA_DIR", "/data"))));
+    }
+
+    [Fact]
     public void Defaults_are_safe()
     {
         var options = new NullboxOptions();
@@ -55,12 +64,9 @@ public sealed class NullboxOptionsTests
 /// <summary>Hosts the app with the default SQLite storage in a temp data directory.</summary>
 public sealed class SqliteFactory : NullboxAppFactory
 {
-    public string DataDirectory { get; } = Path.Combine(Path.GetTempPath(), "nullbox-tests", Guid.NewGuid().ToString("N"));
-
     protected override IReadOnlyDictionary<string, string?> Settings => new Dictionary<string, string?>(base.Settings)
     {
         ["Nullbox:Hangfire:Storage"] = "SQLite",
-        ["Nullbox:DataDirectory"] = DataDirectory,
     };
 }
 
@@ -79,16 +85,14 @@ public sealed class SqliteStorageTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_factory.DataDirectory, "hangfire.db")));
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Data_protection_keys_are_persisted_in_the_data_directory()
     {
-        _factory.Dispose();
-        try
-        {
-            Directory.Delete(_factory.DataDirectory, recursive: true);
-        }
-        catch (IOException)
-        {
-            // Best effort: SQLite may still hold the file briefly on some platforms.
-        }
+        using var client = _factory.CreateClient();
+        await client.GetStringAsync("/login"); // issuing an antiforgery token creates the key ring
+
+        Assert.NotEmpty(Directory.GetFiles(Path.Combine(_factory.DataDirectory, "keys"), "*.xml"));
     }
+
+    public void Dispose() => _factory.Dispose();
 }

@@ -1,10 +1,20 @@
 using Nullbox.Core;
+using Nullbox.Web;
 using Nullbox.Web.Auth;
 using Nullbox.Web.Hosting;
+
+if (args is [HealthProbe.Flag, ..])
+{
+    var uri = args.Length > 1
+        ? new Uri(args[1])
+        : HealthProbe.DefaultUri(Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS"));
+    return await HealthProbe.RunAsync(uri);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddNullboxOptions(builder.Configuration);
+builder.Services.AddNullboxDataProtection(builder.Configuration);
 builder.Services.AddHealthChecks();
 builder.Services.AddAdminAuth();
 builder.Services.AddNullboxJobs();
@@ -23,6 +33,7 @@ app.MapNullboxDashboard();
 app.WarnIfAdminPasswordMissing();
 
 await app.RunAsync();
+return 0;
 
 /// <summary>Exposed so integration tests can host the app with WebApplicationFactory.</summary>
 public partial class Program;

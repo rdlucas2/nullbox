@@ -1,0 +1,33 @@
+# Runs nullbox entirely in a container: `docker compose up -d --build`.
+# Settings come from ./.env (copy .env.example); state lives in ./data on the host.
+name: nullbox
+
+services:
+  nullbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nullbox:local
+    container_name: nullbox
+    restart: unless-stopped
+    ports:
+      # Host port defaults to 8480 (clear of Home Assistant 8123 and Jellyfin 8096).
+      # Set NULLBOX_BIND=<lan-ip> in .env to publish on one interface only.
+      - "${NULLBOX_BIND:-0.0.0.0}:${NULLBOX_PORT:-8480}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      # SQLite DB + Google credentials.json/token.json (./data/google/). Never commit ./data.
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

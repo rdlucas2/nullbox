@@ -11,10 +11,14 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
 {
     public const string AdminPassword = "test-admin-password";
 
+    /// <summary>Per-factory temp data directory (data-protection keys, SQLite files), deleted on dispose.</summary>
+    public string DataDirectory { get; } = Path.Combine(Path.GetTempPath(), "nullbox-tests", Guid.NewGuid().ToString("N"));
+
     protected virtual IReadOnlyDictionary<string, string?> Settings => new Dictionary<string, string?>
     {
         ["Nullbox:Hangfire:Storage"] = "InMemory",
         ["Nullbox:AdminPassword"] = AdminPassword,
+        ["Nullbox:DataDirectory"] = DataDirectory,
         // Far-future schedule so only explicit triggers run the heartbeat during tests.
         ["Nullbox:Jobs:HeartbeatCron"] = "0 0 1 1 *",
     };
@@ -24,6 +28,26 @@ public class NullboxAppFactory : WebApplicationFactory<Program>
         foreach (var (key, value) in Settings)
         {
             builder.UseSetting(key, value);
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+        {
+            try
+            {
+                Directory.Delete(DataDirectory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best effort: SQLite may still hold its file briefly.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best effort.
+            }
         }
     }
 

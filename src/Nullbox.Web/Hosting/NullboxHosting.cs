@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.Storage.SQLite;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using Nullbox.Core.Jobs;
 using Nullbox.Core.Options;
@@ -46,6 +47,28 @@ public static class NullboxHosting
                 options.DataDirectory = dataDir;
             }
         }
+    }
+
+    /// <summary>Resolves the data directory the same way options binding does, for start-up wiring.</summary>
+    public static string ResolveDataDirectory(IConfiguration configuration)
+    {
+        var options = new NullboxOptions();
+        configuration.GetSection(NullboxOptions.SectionName).Bind(options);
+        ApplyEnvironmentFallbacks(options, configuration);
+        return Path.GetFullPath(options.DataDirectory);
+    }
+
+    /// <summary>
+    /// Keeps ASP.NET Core data-protection keys (login cookies, antiforgery) in <c>{data}/keys</c> so sign-ins
+    /// survive container restarts.
+    /// </summary>
+    public static IServiceCollection AddNullboxDataProtection(this IServiceCollection services, IConfiguration configuration)
+    {
+        var keys = Directory.CreateDirectory(Path.Combine(ResolveDataDirectory(configuration), "keys"));
+        services.AddDataProtection()
+            .SetApplicationName(Nullbox.Core.AppInfo.Name)
+            .PersistKeysToFileSystem(keys);
+        return services;
     }
 
     public static IServiceCollection AddNullboxJobs(this IServiceCollection services)

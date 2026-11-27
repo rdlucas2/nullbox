@@ -43,3 +43,31 @@ jobs:
         with:
           name: test-results
           path: TestResults
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: docker compose config --quiet
+
+      - name: Build image (no push)
+        run: docker build --tag nullbox:ci .
+
+      - name: Smoke test container health
+        run: |
+          mkdir -p data && sudo chown 1654:1654 data
+          docker run --detach --name nullbox-ci --publish 8480:8080 --volume "$PWD/data:/data" nullbox:ci
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' nullbox-ci)
+            echo "health: $status"
+            if [ "$status" = "healthy" ]; then break; fi
+            sleep 2
+          done
+          curl --fail --silent --show-error http://localhost:8480/healthz
+          test "$(docker inspect --format '{{.Config.User}}' nullbox-ci)" = "1654"
+
+      - name: Container logs
+        if: always()
+        run: docker logs nullbox-ci || true
