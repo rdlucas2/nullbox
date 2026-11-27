@@ -7,7 +7,7 @@ namespace Nullbox.Gmail.Cleanup;
 /// <summary>
 /// emailBlaster's <c>run_cleanup</c>: search every rule first (a message matched by an earlier rule is not counted
 /// again), then, unless it is a dry run, mark read and archive each rule's matches with the config's label. Only
-/// <see cref="IGmailService.SearchAsync"/>, message metadata reads, <see cref="IGmailService.EnsureLabelAsync"/> and
+/// <see cref="IGmailReader.SearchAsync"/>, message metadata reads, <see cref="IGmailService.EnsureLabelAsync"/> and
 /// <see cref="IGmailService.BatchModifyAsync"/> (which chunks at 1000 ids) are used: cleanup never trashes or deletes.
 /// </summary>
 public sealed class CleanupRunner(IGmailService gmail, TimeProvider time, ILogger<CleanupRunner> logger)
