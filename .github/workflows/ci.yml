@@ -57,7 +57,8 @@ jobs:
 
       - name: Smoke test container health
         run: |
-          mkdir -p data && sudo chown 1654:1654 data
+          # ./data is owned by the runner user, not the container's, as on a fresh clone: the entrypoint must fix it.
+          mkdir -p data
           docker run --detach --name nullbox-ci --publish 8480:8080 --volume "$PWD/data:/data" nullbox:ci
           for i in $(seq 1 30); do
             status=$(docker inspect --format '{{.State.Health.Status}}' nullbox-ci)
@@ -66,7 +67,9 @@ jobs:
             sleep 2
           done
           curl --fail --silent --show-error http://localhost:8480/healthz
-          test "$(docker inspect --format '{{.Config.User}}' nullbox-ci)" = "1654"
+          # The app itself runs unprivileged as 1654 and owns what it wrote.
+          test "$(docker exec nullbox-ci awk '/^Uid:/{print $2}' /proc/1/status)" = "1654"
+          test "$(stat -c %u data/keys)" = "1654"
 
       - name: Container logs
         if: always()

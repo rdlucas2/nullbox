@@ -23,6 +23,10 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       JEV_API_KEY: ${JEV_API_KEY:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Who owns ./data. Default 1654 (the image's app user); set to your `id -u` / `id -g` to keep the files
+      # editable without sudo. The container fixes ./data ownership itself on start.
+      NULLBOX_UID: ${NULLBOX_UID:-1654}
+      NULLBOX_GID: ${NULLBOX_GID:-}
     volumes:
       # SQLite DB + Google credentials.json/token.json (./data/google/). Never commit ./data.
       - ./data:/data

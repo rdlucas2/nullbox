@@ -64,7 +64,7 @@ public static class NullboxHosting
     /// </summary>
     public static IServiceCollection AddNullboxDataProtection(this IServiceCollection services, IConfiguration configuration)
     {
-        var keys = Directory.CreateDirectory(Path.Combine(ResolveDataDirectory(configuration), "keys"));
+        var keys = DataDirectoryAccess.EnsureWritable(Path.Combine(ResolveDataDirectory(configuration), "keys"));
         services.AddDataProtection()
             .SetApplicationName(Nullbox.Core.AppInfo.Name)
             .PersistKeysToFileSystem(keys);
